@@ -73,10 +73,16 @@ acsTractsPHL.2020 <- get_acs(geography = "tract",
 ```
 
 ```{r read_data}
-
-nhoods <- 
-  st_read("D:/Upenn/23fall/MUSA5080 Public Policy Analysis/midterm 4-5/studentData.geojson") %>%
+# import planning district and housing data
+district <- 
+  st_read("https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/Planning_Districts.geojson") %>%
+  dplyr::select(DIST_NAME,ABBREV) %>% #Select data for later prediction
   st_transform('ESRI:102729')
+nhoods_0 <- 
+  st_read("https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/studentData.geojson") %>%
+  st_transform('ESRI:102729')
+
+nhoods <- st_join(nhoods_0, district)
 
 to_predict <-
   nhoods %>%
@@ -94,10 +100,12 @@ to_train <-
 # Load crime data
 philadelphiCrimes <- read.csv('https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/Philadelphia_crime.csv') 
 
-# Create sf and select Weapon Violations
+# Create sf and select related crimes
+crime_codes_set <- c("Weapon Violations", "Thefts", "Robbery Firearm", 'Vandalism/Criminal Mischief', 'Homicide - Criminal ','Homicide - Criminal', 'Burglary Residential')
+
 philadelphiCrimes.sf <-
   philadelphiCrimes %>%
-  filter(text_general_code == "Weapon Violations",
+  filter(text_general_code %in% crime_codes_set,
   lat > -1) %>%
   dplyr::select(lat, lng) %>%
   na.omit() %>%
@@ -105,8 +113,11 @@ philadelphiCrimes.sf <-
   st_transform('ESRI:102729') %>%
   distinct()
 
-# Load 311 data
+# Load 311 data and select related variables
+call311_codes_set <- c('Illegal Dumping','Abandoned Vehicle','Street Defect','Graffiti Removal','Dangerous Building Complaint','Homeless Encampment Request','Abandoned Bike','Opioid Response Unit')
 philadelphia311.sf <- read.csv('https://phl.carto.com/api/v2/sql?filename=public_cases_fc&format=csv&skipfields=cartodb_id,the_geom,the_geom_webmercator&q=SELECT%20*%20FROM%20public_cases_fc%20WHERE%20requested_datetime%20%3E=%20%272022-01-01%27%20AND%20requested_datetime%20%3C%20%272023-01-01%27') %>%
+  filter(service_name %in% call311_codes_set,
+  lat > -1) %>%
   dplyr::select(lat, lon) %>%
   na.omit() %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326, agr = "constant") %>%
@@ -119,7 +130,7 @@ philadelphia311.sf <- read.csv('https://phl.carto.com/api/v2/sql?filename=public
 
 # Mapping data
 ggplot() +
-  geom_sf(data = acsTractsPHL.2020, fill = "grey40") +
+  geom_sf(data = district, fill = "grey40") +
   geom_sf(data = to_train, aes(colour = q5(sale_price)), 
           show.legend = "point", size = .35) +
   scale_colour_manual(values = palette5,
@@ -128,6 +139,7 @@ ggplot() +
   labs(title="House Sale Price, Philadelphia") +
   mapTheme()
 ```
+
 
 ## 2.3 Create Nearest Spatial Features
 
@@ -330,7 +342,7 @@ to_train %>%
   ggplot(aes(x = fireplaces, y = avg_sale_price)) +
     geom_bar(stat = "identity") +
     labs(
-      title = "Average Sale Price by Exterior Condition",
+      title = "Average Sale Price by Fireplaces",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
@@ -346,7 +358,7 @@ to_train %>%
   ggplot(aes(x = interior_condition, y = avg_sale_price)) +
     geom_bar(stat = "identity") +
     labs(
-      title = "Average Sale Price by Exterior Condition",
+      title = "Average Sale Price by Interior Condition",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
@@ -362,7 +374,7 @@ to_train %>%
   ggplot(aes(x = number_of_bathrooms, y = avg_sale_price)) +
     geom_bar(stat = "identity") +
     labs(
-      title = "Average Sale Price by Exterior Condition",
+      title = "Average Sale Price by Number of Bathrooms",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
@@ -378,7 +390,7 @@ to_train %>%
   ggplot(aes(x = number_of_bedrooms, y = avg_sale_price)) +
     geom_bar(stat = "identity") +
     labs(
-      title = "Average Sale Price by Exterior Condition",
+      title = "Average Sale Price by Number of Bedrooms",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
@@ -394,12 +406,61 @@ to_train %>%
   ggplot(aes(x = number_stories, y = avg_sale_price)) +
     geom_bar(stat = "identity") +
     labs(
-      title = "Average Sale Price by Exterior Condition",
+      title = "Average Sale Price by Number of Stories",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+```
+```{r}
+# add reclassified data
+to_train <- to_train %>%  
+  mutate(
+    exterior_condition_re = case_when(
+      exterior_condition %in% 1:3 ~ 1,
+      exterior_condition %in% 4:5 ~ 2,
+      exterior_condition %in% 6:7 ~ 3
+    )
+  ) %>%  
+  mutate(
+    fireplaces_re = case_when(
+      fireplaces %in% 0:1 ~ 1,
+      fireplaces == 2     ~ 2,
+      fireplaces %in% 3:5 ~ 3
+    )
+  ) %>%  
+  mutate(
+    interior_condition_re = case_when(
+      interior_condition %in% 0:2 ~ 1,
+      interior_condition %in% 3:4 ~ 2,
+      interior_condition %in% 5:7 ~ 3
+    )
+  ) %>%  
+  mutate(
+    number_of_bathrooms_re = case_when(
+      number_of_bathrooms ==0      ~ 1,
+      number_of_bathrooms %in% 1:2 ~ 2,
+      number_of_bathrooms %in% 3:6 ~ 3
+    )
+  ) %>%  
+  mutate(
+    number_of_bedrooms_re = case_when(
+      number_of_bedrooms %in% 0:1 ~ 1,
+      number_of_bedrooms %in% 2:3 ~ 2,
+      number_of_bedrooms %in% 4:31 ~ 3
+    )
+  )%>%  
+  mutate(
+    number_stories_re = case_when(
+      number_stories == 1     ~ 1,
+      number_stories == 2     ~ 2,
+      number_stories %in% 3:5 ~ 3
+    )
+  )
+
+philly_sub_200k <- st_drop_geometry(to_train) %>% 
+filter(sale_price <= 2000000, total_livable_area < 10000, total_livable_area > 0) 
 ```
 
 ## 3.3 Select Variables
@@ -497,7 +558,7 @@ predict(livingReg, newdata = data.frame(total_livable_area = 4000))
 
 ```{r mutlivariate_regression}
 reg1 <- lm(sale_price ~ ., data = philly_sub_200k %>% 
-                                 dplyr::select(sale_price, Age, total_livable_area, crime_nn3, philly311.Buffer, 
+                                 dplyr::select(sale_price, Age, total_livable_area, crime_nn5, philly311.Buffer, 
                                                fireplaces, interior_condition, number_of_bathrooms, number_of_bedrooms, number_stories))
 
 summary(reg1)
