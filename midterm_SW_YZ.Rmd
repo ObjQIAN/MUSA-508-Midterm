@@ -1,6 +1,6 @@
 ---
 title: "Predicting Housing Prices"
-author: "Qiansheng Wang, Yixuan Zhou"
+author: "Shengqian Wang, Yixuan Zhou"
 date: 2023-10-11
 output:
   html_document:
@@ -10,25 +10,20 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, message = FALSE)
+
 ```
 
 
 # 1 Introduction
 
-Philadelphia, often referred to as the "City of Brotherly Love," is a historic metropolis steeped in cultural significance and architectural grandeur. With its rich tapestry of neighborhoods, each boasting its own distinct character, the Philadelphia real estate market presents a unique landscape for housing price prediction. Unlike many other cities, Philadelphia's real estate dynamics are shaped by a blend of historical preservation efforts, economic diversity, and a thriving academic sector.
+The Philadelphia real estate market boasts diverse neighborhoods, each with unique qualities, shaping a distinctive landscape for predicting home prices. Unlike many cities, Philadelphia's real estate dynamics are influenced by historic preservation, economic diversity, and a thriving academic sector.
 
-One defining characteristic of Philadelphia's housing market is its substantial owner-occupancy rate, which stands in contrast to cities where renting is more prevalent. This phenomenon is largely attributed to the city's strong sense of community and the enduring appeal of its historic neighborhoods. As a result, the demand for both rental and owned properties is influenced by a wide array of factors, ranging from proximity to cultural landmarks to accessibility to educational institutions.
+To better cater to Philadelphia's unique housing market, we conducted a study aimed at enhancing the precision and relevance of home price forecasts. Our objective is to create a robust model that considers both internal and external factors affecting urban housing prices.
 
-Moreover, the interplay between the local economy and the housing market in Philadelphia is a crucial factor for accurate price prediction. The city's economy is multifaceted, with significant contributions from industries such as education, healthcare, and technology. This diversity creates a dynamic real estate environment, as shifts in employment and economic trends can have pronounced effects on housing demand and pricing.
+We employed ordinary least squares (OLS) linear regression models, integrating data from various sources into a comprehensive framework. This encompasses data on a home's inherent features, generously provided by our clients, alongside external data from Philadelphia Open Data and the American Community Survey by the U.S. Census Bureau. This combination of interior, exterior, and spatial data is crucial for building a model that accurately reflects Philadelphia's dynamic housing market.
 
-Philadelphia's real estate landscape also bears the influence of demographic trends, including the preferences of millennials and baby boomers for urban living. This demographic shift has led to the revitalization of many neighborhoods, spurring investment in both residential and commercial properties. Additionally, initiatives aimed at urban redevelopment and sustainability have played a pivotal role in shaping the city's housing market.
-
-In response to the increasing demand for a housing market model tailored to the unique characteristics of Philadelphia, we have embarked on a study aimed at enhancing the precision and applicability of home sale price predictions. Our goal is to develop a robust model that takes into account both internal and external factors influencing housing prices in the city.
-
-Employing an Ordinary Least Squares (OLS) Linear regression model, we have integrated data from various sources to create a comprehensive framework. This encompasses information on the intrinsic attributes of homes, graciously provided by our client, as well as external data derived from Philadelphia Open Data and the American Community Survey conducted by the U.S. Census Bureau. This combination of internal and external data is crucial in striving for a model that accurately reflects the dynamic Philadelphia housing market.
-
-This report delineates our methodology and approach, underscoring the paramount importance of considering local context in tandem with internal characteristics. While our model is a work in progress, we are confident that it will furnish us with valuable insights into the factors that influence homebuyers' preferences and, consequently, shape the evolving landscape of the Philadelphia housing market.
+This report outlines our methodology, underscoring the significance of local context and internal characteristics. While our model is a work in progress, we anticipate it will yield valuable insights into the factors influencing homebuyer preferences, shaping Philadelphia's evolving housing market.
 
 # 2 Data Manipulation and Visualization
 
@@ -36,7 +31,7 @@ This report delineates our methodology and approach, underscoring the paramount 
 
 In this section, we initiated the process by loading essential libraries, establishing plot theme configurations, and defining map theme settings. Additionally, we identified and prepared functions for quintile breaks and calculating the average nearest neighbor distance, setting the stage for a more in-depth analysis.
 
-```{r setup, include=FALSE}
+```{r , include=FALSE}
 
 # You can set some global options for knitting chunks
 
@@ -83,7 +78,7 @@ Here are the data we will use in our study.
 
 As evident from the chart below, property values are elevated along the central and northern peripheries of South Philadelphia, with prices tapering towards the center.
 
-```{r read_data}
+```{r read_data,results = FALSE,warning = FALSE, message = FALSE}
 # import planning district and housing data
 district <- 
   st_read("https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/Planning_Districts.geojson") %>%
@@ -99,7 +94,7 @@ nhoods <- st_join(nhoods_0, district)%>%
   
 ```
 
-```{r price_map}
+```{r price_map,results = FALSE,warning = FALSE, message = FALSE}
 # ggplot, reorder
 
 # Mapping data
@@ -127,7 +122,7 @@ The characterisitics
     -   `park`: parks and recreaction places in each census tract
     -   `market`: high-produce supply stores (e.g., supermarkets, produce stores, farmers’ markets) in each census tract
     
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
 # 1.Load crime data
 philadelphiCrimes <- read.csv('https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/Philadelphia_crime.csv') 
@@ -205,13 +200,13 @@ market.sf <- st_read('https://opendata.arcgis.com/datasets/53b8a1c653a74c92b2de2
     -   `pctBachelors`: Bachelor population proportion in each census tract
     -   `pctPoverty`: Poverty population proportion in each census tract
   
-```{r load_key, warning = FALSE, eval = FALSE}
+```{r load_key, warning = FALSE, eval = FALSE,results = FALSE,message = FALSE}
 
 census_api_key("5c7b1ebb206012789759942ddf1acbb882f937ad", overwrite = TRUE)
 
 ```
 
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
 # Load acs data
 
@@ -252,7 +247,7 @@ In this part, we calculated the number of different features within a radius of 
 
 #### (1) Crime Data Set
 
-```{r Features}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
 # Counts of crime per buffer of house sale
 nhoods$crimes.Buffer <- nhoods %>% 
@@ -296,7 +291,7 @@ ggplot() +
   mapTheme()
 ```
 
-Obviously, `crime_nn5` is the one with the strongest correlation with `sale_price`. We will use crime_nn5 as a factor in the following study.
+From the charts below, `crime_nn5` is the one with the strongest correlation with `sale_price`. We will use crime_nn5 as a factor in the following study.
 
 ```{r}
 
@@ -319,7 +314,7 @@ nhoods %>%
 
 In the figure below, it is shown that the distribution of the number of 311 calls is similar to the hot spots of crime distribution, but is more overall and dispersed.
 
-```{r Features}
+```{r }
 
 # Counts of 311 per buffer of house sale
 nhoods$p311.Buffer <- nhoods %>% 
@@ -360,7 +355,7 @@ ggplot() + geom_sf(data = district, fill = "grey40") +
   labs(title = "Density of 311, PHL") +
   mapTheme()
 ```
-Obviously, `p311_nn5` is the one with the strongest correlation with `sale_price`.
+From the charts below, `p311_nn5` is the one with the strongest correlation with `sale_price`.
 
 ```{r }
 # 311_nn plot
@@ -578,6 +573,8 @@ to_train <-
 
 ### 2.1.3 Summary Statistics
 
+For this part, we summarized and reviewed the data and separated them to Internal Characteristics, External Characteristics, and Spatial Characteristics
+
 #### (1) Internal Characteristics
 
 ```{r}
@@ -599,7 +596,7 @@ feature.list <- to_train %>%
 
 ```
 
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 # 1.internal characteristics
   
 internal.list <- 
@@ -619,7 +616,7 @@ stargazer(data = internal.list, type = "html",
 
 #### (2) External Characteristics
 
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
 # 2.external characteristics1
 external.list <- to_train %>%
@@ -642,7 +639,7 @@ stargazer(data = external.list, type = "html",
 
 #### (3) Spatial Characteristics
 
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 # 3. external characteristics2 - acs features
 
 census.list <- to_train %>%
@@ -693,14 +690,14 @@ to_train %>%
   filter(sale_price <= 1000000) %>%
   group_by(exterior_condition) %>%
   summarize(avg_sale_price = mean(sale_price)) %>%
-  ggplot(aes(x = exterior_condition, y = avg_sale_price)) +
+  ggplot(aes(x = exterior_condition, y = avg_sale_price,alpha = 0.3)) +
     geom_bar(stat = "identity") +
     labs(
       title = "Average Sale Price by Exterior Condition",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
 
 to_train %>%
   dplyr::select(sale_price, fireplaces) %>%
@@ -709,14 +706,14 @@ to_train %>%
   filter(!is.na(fireplaces)) %>%
   group_by(fireplaces) %>%
   summarize(avg_sale_price = mean(sale_price)) %>%
-  ggplot(aes(x = fireplaces, y = avg_sale_price)) +
+  ggplot(aes(x = fireplaces, y = avg_sale_price,alpha = 0.3)) +
     geom_bar(stat = "identity") +
     labs(
       title = "Average Sale Price by Fireplaces",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
 
 to_train %>%
   dplyr::select(sale_price, interior_condition) %>%
@@ -725,14 +722,14 @@ to_train %>%
   filter(!is.na(interior_condition)) %>%
   group_by(interior_condition) %>%
   summarize(avg_sale_price = mean(sale_price)) %>%
-  ggplot(aes(x = interior_condition, y = avg_sale_price)) +
+  ggplot(aes(x = interior_condition, y = avg_sale_price,alpha = 0.3)) +
     geom_bar(stat = "identity") +
     labs(
       title = "Average Sale Price by Interior Condition",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
 
 to_train %>%
   dplyr::select(sale_price, number_of_bathrooms) %>%
@@ -741,14 +738,14 @@ to_train %>%
   filter(!is.na(number_of_bathrooms)) %>%
   group_by(number_of_bathrooms) %>%
   summarize(avg_sale_price = mean(sale_price)) %>%
-  ggplot(aes(x = number_of_bathrooms, y = avg_sale_price)) +
+  ggplot(aes(x = number_of_bathrooms, y = avg_sale_price,alpha = 0.3)) +
     geom_bar(stat = "identity") +
     labs(
       title = "Average Sale Price by Number of Bathrooms",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
 
 to_train %>%
   dplyr::select(sale_price, number_of_bedrooms) %>%
@@ -757,14 +754,14 @@ to_train %>%
   filter(!is.na(number_of_bedrooms)) %>%
   group_by(number_of_bedrooms) %>%
   summarize(avg_sale_price = mean(sale_price)) %>%
-  ggplot(aes(x = number_of_bedrooms, y = avg_sale_price)) +
+  ggplot(aes(x = number_of_bedrooms, y = avg_sale_price,alpha = 0.3)) +
     geom_bar(stat = "identity") +
     labs(
       title = "Average Sale Price by Number of Bedrooms",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
 
 to_train %>%
   dplyr::select(sale_price, number_stories) %>%
@@ -773,14 +770,14 @@ to_train %>%
   filter(!is.na(number_stories)) %>%
   group_by(number_stories) %>%
   summarize(avg_sale_price = mean(sale_price)) %>%
-  ggplot(aes(x = number_stories, y = avg_sale_price)) +
+  ggplot(aes(x = number_stories, y = avg_sale_price,alpha = 0.3)) +
     geom_bar(stat = "identity") +
     labs(
       title = "Average Sale Price by Number of Stories",
       y = "Average Sale Price"
     ) +
     plotTheme() + 
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
 
 ```
 
@@ -871,7 +868,7 @@ ggcorrplot(
 
 ```
 
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
 BED_Reg <- lm(sale_price ~ number_of_bedrooms, data = philly_sub_200k)
 summary(BED_Reg)
@@ -887,7 +884,7 @@ In order to make the results more intuitive, we put the filtered features (`crim
 
 In the plot below, most of them do not have correlation, while `landmark.Buffer` and `market_nn3` have a positive correlation.
 
-```{r correlation_matrix}
+```{r correlation_matrix2}
 external.list <- to_train %>%
   dplyr:: select(crime_nn5,
                  p311_nn5,
@@ -914,7 +911,7 @@ ggcorrplot(
 ```
 #### (3) Spatial Characteristics
 
-```{r correlation_matrix}
+```{r correlation_matrix3}
 
 numericVars.spatial <- 
   select_if(census.list, is.numeric) %>% 
@@ -963,7 +960,7 @@ ggscatter(philly_sub_200k,
 
 ### 4.1.1 Table of results (training set)
 
-```{r mutlivariate_regression}
+```{r mutlivariate_regression,warning = FALSE}
 reg1 <- lm(sale_price ~ ., data = philly_sub_200k %>% 
                                  dplyr::select(sale_price, Age, total_livable_area, 
                                                geographic_ward,garage_spaces,
@@ -1008,7 +1005,7 @@ plot_summs(reg1, scale = TRUE)
 
 Then we split Data into Train/Test Set.
 
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 to_train <- to_train %>%
     mutate(landmark.Buffer = ifelse(is.na(landmark.Buffer), 0, landmark.Buffer))
 to_train <- to_train %>%
@@ -1295,6 +1292,8 @@ st_drop_geometry(bothRegressions) %>%
 
 ## 4.9 plot of MAPE by neighborhood mean price
 
+the Mean Absolute Percentage Error (MAPE) could provides a standardized measure of the housing price's accuracy.
+
 ```{r}
 
 st_drop_geometry(philly.test) %>%
@@ -1315,6 +1314,8 @@ st_drop_geometry(philly.test) %>%
 
 ## 4.10 Further examination of errors
 
+We did an additional examination on Predicted sale price as a function of observed price"
+
 ```{r}
 
 bothRegressions %>%
@@ -1331,7 +1332,8 @@ bothRegressions %>%
 
 ```
 
-We can also examine the spatial pattern of errors.
+
+We also examine the spatial pattern of errors. There is significant influence from the neighborhood dynamics.
 
 ```{r}
 
@@ -1354,7 +1356,7 @@ st_drop_geometry(bothRegressions) %>%
 
 ## 4.11 Race and income context of predictions
 
-What is the race and income context of Boston census tracts, and how does this relate to our model performance?
+Analyzing the race and income contexts of the predictions helps in understanding the spatial distribution of the model's performance.
 
 ```{r}
 tracts20 <- 
