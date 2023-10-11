@@ -84,13 +84,7 @@ nhoods_0 <-
 
 nhoods <- st_join(nhoods_0, district)
 
-to_predict <-
-  nhoods %>%
-  dplyr::filter(toPredict == 'CHALLENGE') #Select data for later prediction
-
-to_train <-
-  nhoods %>%
-  dplyr::filter(toPredict == 'MODELLING') #Select data for training Model
+to_train <- nhoods
 
 #??
 #Philadelphia <- 
@@ -247,7 +241,6 @@ Can you give me a one-sentence description of what the takeaway is?
 ## Crime cor
 to_train %>%
   st_drop_geometry() %>%
-  mutate(Age = 2022 - year_built) %>%
   dplyr::select(sale_price, starts_with("crime_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
@@ -265,10 +258,16 @@ The result shows that crime_nn3 is the best one (Adjusted R-squared:  0.1118).
 # the result above is too similar, So we calculate and compare the R^2 to choose which crime data to use.
 # The result shows that crime_nn3 is the best one.
 to_train <- to_train %>%
-  mutate(Age = 2022 - year_built) 
+  mutate(Age = 2022 - year_built) #%>%
+ # dplyr::filter(toPredict == 'MODELLING') #Select data for later prediction
+
+to_predict <-
+  to_train %>%
+  dplyr::filter(toPredict == 'CHALLENGE') #Select data for later prediction
+
 
 philly_sub_200k <- st_drop_geometry(to_train) %>% 
-filter(sale_price <= 2000000, total_livable_area < 10000, total_livable_area > 0) 
+filter(sale_price <= 2000000, total_livable_area < 10000, total_livable_area > 0,toPredict == 'MODELLING') 
 
 Crime1Reg <- lm(sale_price ~ crime_nn1, data = philly_sub_200k)
 summary(Crime1Reg)
@@ -295,9 +294,9 @@ We use the scatter plot to initially determine whether the following Numeric Fea
 ## Home Features cor
 
 st_drop_geometry(to_train) %>% 
-  dplyr::select(sale_price, total_livable_area, Age, crime_nn3, 
-                depth, frontage, off_street_open, philly311.Buffer) %>%
-  filter(sale_price <= 1000000, Age < 500, total_livable_area <10000, depth < 600, frontage < 500) %>%
+  dplyr::select(sale_price, total_livable_area, Age, crime_nn5, 
+                depth, frontage, off_street_open, philly311.Buffer,garage_spaces) %>%
+  filter(sale_price <= 1000000, Age < 500, total_livable_area <10000, frontage < 500) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
      geom_point(size = .5) + 
@@ -413,6 +412,8 @@ to_train %>%
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ```
+
+
 ```{r}
 # add reclassified data
 to_train <- to_train %>%  
@@ -488,6 +489,8 @@ ggcorrplot(
     labs(title = "Correlation across numeric variables") 
 
 
+
+
 #有无穷或遗漏值？
 # yet another way to plot the correlation plot using the corrr library
 #numericVars %>% 
@@ -558,12 +561,20 @@ predict(livingReg, newdata = data.frame(total_livable_area = 4000))
 
 ```{r mutlivariate_regression}
 reg1 <- lm(sale_price ~ ., data = philly_sub_200k %>% 
-                                 dplyr::select(sale_price, Age, total_livable_area, crime_nn5, philly311.Buffer, 
-                                               fireplaces, interior_condition, number_of_bathrooms, number_of_bedrooms, number_stories))
+                                 dplyr::select(sale_price, Age, total_livable_area, crime_nn3, philly311.Buffer,
+                                               geographic_ward,garage_spaces,
+                                               fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                               number_of_bedrooms, number_stories))
 
 summary(reg1)
 
 ```
+
+```{r}
+par(mfrow=c(2,2)) 
+plot(reg1)
+```
+
 
 ## Marginal Response Plots
 
@@ -624,6 +635,20 @@ philly.test <-
          sale_price.APE = (abs(sale_price.Predict - sale_price)) / sale_price.Predict)%>%
   filter(sale_price < 5000000) 
 
+
+
+
+```
+
+```{r}
+# predict competition
+assign_test <- predict(reg.training , newdata=to_predict)
+to_predict$predict <- assign_test
+predicted_sub<-  to_predict %>%
+  dplyr::select(musaID,predict) %>%
+  mutate('team' = 'a team') %>%
+  st_drop_geometry()
+  
 ```
 
 ```{r}
@@ -699,7 +724,7 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 philly.test %>%
 as.data.frame() %>%
 # Tract is not a good factor here
-  group_by(zip_code) %>%
+  group_by(DIST_NAME) %>%
     summarize(meanPrediction = mean(sale_price.Predict),
               meanPrice = mean(sale_price)) %>%
       kable() %>% 
@@ -732,9 +757,9 @@ How do these models compare? We can bind our error info together and then examin
 ```{r}
 bothRegressions <- 
   rbind(
-    dplyr::select(philly.test, starts_with("sale_price"), Regression, zip_code) %>%
+    dplyr::select(philly.test, starts_with("sale_price"), Regression, DIST_NAME) %>%
       mutate(lagPriceError = lag.listw(spatialWeights.test, sale_price.Error)),
-    dplyr::select(philly.test.nhood, starts_with("sale_price"), Regression, zip_code) %>%
+    dplyr::select(philly.test.nhood, starts_with("sale_price"), Regression, DIST_NAME) %>%
       mutate(lagPriceError = lag.listw(spatialWeights.test, sale_price.Error)))  
 
 ```
@@ -743,7 +768,7 @@ Why do these values differ from those in the book?
 
 ```{r}
 st_drop_geometry(bothRegressions) %>%
-  gather(Variable, Value, -Regression, -zip_code) %>%
+  gather(Variable, Value, -Regression, -DIST_NAME) %>%
   filter(Variable == "sale_price.AbsError" | Variable == "sale_price.APE") %>%
   group_by(Regression, Variable) %>%
     summarize(meanValue = mean(Value, na.rm = T)) %>%
@@ -764,7 +789,6 @@ bothRegressions %>%
              method = "lm", se = FALSE, size = 1, colour="#FA7800") + 
   stat_smooth(aes(sale_price.Predict, sale_price), 
               method = "lm", se = FALSE, size = 1, colour="#25CB10") +
-  facet_wrap(~Regression) +
   labs(title="Predicted sale price as a function of observed price",
        subtitle="Orange line represents a perfect prediction; Green line represents prediction") +
   plotTheme()
@@ -776,10 +800,10 @@ We can also examine the spatial pattern of errors.
 ```{r}
 
 st_drop_geometry(bothRegressions) %>%
-  group_by(Regression, zip_code) %>%
+  group_by(Regression, DIST_NAME) %>%
   summarize(mean.MAPE = mean(sale_price.APE, na.rm = T)) %>%
   ungroup() %>% 
-  st_join(acsTractsPHL.2020) %>%
+  left_join(district, by = c("DIST_NAME" = "DIST_NAME")) %>%
     st_sf() %>%
     ggplot() + 
       geom_sf(aes(fill = mean.MAPE)) +
@@ -789,8 +813,9 @@ st_drop_geometry(bothRegressions) %>%
                           name = "MAPE") +
       labs(title = "Mean test set MAPE by neighborhood") +
       mapTheme()
-
 ```
+# Export prediction
+
 
 ## Race and income context of predictions
 
@@ -833,3 +858,7 @@ st_join(bothRegressions, tracts20) %>%
 
 ```
 111
+```{r}
+
+```
+
