@@ -292,11 +292,11 @@ ggplot() +
                  size = 0.01, bins = 40, geom = 'polygon') +
   scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
   scale_alpha(range = c(0.00, 0.35), guide = "none") +
-  labs(title = "Density of WA, PHL") +
+  labs(title = "Density of Serious Crimes, Philadelphia") +
   mapTheme()
 ```
 
-Obviously, `crime_nn5` is the one with the strongest correlation with `sale_price`.
+Obviously, `crime_nn5` is the one with the strongest correlation with `sale_price`. We will use crime_nn5 as a factor in the following study.
 
 ```{r}
 
@@ -545,7 +545,7 @@ ggplot() + geom_sf(data = district, fill = "grey40") +
                  size = 0.01, bins = 40, geom = 'polygon') +
   scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
   scale_alpha(range = c(0.1, 0.35), guide = "none") +
-  labs(title = "Density of landmarks, PHL") +
+  labs(title = "Density of landmarks, Philadelphia") +
   mapTheme()
 
 ```
@@ -558,7 +558,7 @@ ggplot() + geom_sf(data = district, fill = "grey40") +
                  size = 0.01, bins = 40, geom = 'polygon') +
   scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
   scale_alpha(range = c(0.1, 0.35), guide = "none") +
-  labs(title = "Density of schools, PHL") +
+  labs(title = "Density of schools, Philadelphia") +
   mapTheme()
 
 ```
@@ -1041,7 +1041,7 @@ philly.training <- philly.training%>%
                  hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
                  park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
                  market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5, 
-                 DIST_NAME,building_code_description, quality_grade) 
+                 DIST_NAME,building_code_description, quality_grade, musaID) 
 
 philly.test <- philly.test%>%
   dplyr::select(sale_price, Age, total_livable_area,
@@ -1056,7 +1056,7 @@ philly.test <- philly.test%>%
                  hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
                  park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
                  market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5, 
-                 DIST_NAME,building_code_description, quality_grade) 
+                 DIST_NAME,building_code_description, quality_grade, musaID) 
 
 reg.training <- 
   lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
@@ -1248,15 +1248,19 @@ philly.test.nhood <-
 
 ```
 
+```{r}
+philly.test.nhood$sale_price.Error <- replace(philly.test.nhood$sale_price.Error, is.na(philly.test.nhood$sale_price.Error), 9999999)
+```
 
 ```{r}
-
 bothRegressions <- 
   rbind(
     dplyr::select(philly.test, starts_with("sale_price"), Regression, DIST_NAME) %>%
       mutate(lagPriceError = lag.listw(spatialWeights.test, sale_price.Error)),
     dplyr::select(philly.test.nhood, starts_with("sale_price"), Regression, DIST_NAME) %>%
       mutate(lagPriceError = lag.listw(spatialWeights.test, sale_price.Error)))  
+
+bothRegressions <- na.omit(bothRegressions)
 
 ```
 
@@ -1278,13 +1282,13 @@ st_drop_geometry(bothRegressions) %>%
 ```{r}
 
  ggplot()+
-   geom_sf(data= DIST_NAME,fill='grey80',color='transparent')+
-   geom_sf(data = nhoods, aes(colour = q5(sale_price.Predict)), 
+   geom_sf(data= district,fill='grey80',color='transparent')+
+   geom_sf(data = philly.test, aes(colour = q5(sale_price.Predict)), 
           show.legend = "point", size = .35) +
    scale_colour_manual(values = palette5,
-                   labels=qBr(nhoods,"sale_price.Predict"),
+                  labels=qBr(philly.test,"sale_price.Predict"),
                    name="Quintile\nBreaks") +
-  labs(title="Predocted House Sale Price, Philadelphia") +
+  labs(title="Predicted House Sale Price, Philadelphia") +
   mapTheme()
 
 ```
@@ -1297,7 +1301,7 @@ st_drop_geometry(philly.test) %>%
   group_by(Regression, DIST_NAME) %>%
   summarize(mean.MAPE = mean(abs(sale_price.APE * 100), na.rm = T)) %>%
   ungroup() %>% 
-  left_join(DIST_NAME) %>%
+  left_join(district) %>%
     st_sf() %>%
     ggplot() + 
       geom_sf(aes(fill = mean.MAPE)) +
