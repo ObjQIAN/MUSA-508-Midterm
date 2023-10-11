@@ -380,8 +380,6 @@ nhoods$landmark.Buffer <- nhoods %>%
     st_buffer(660) %>% 
     aggregate(mutate(landmark.sf, counter = 1),., sum) %>%
     pull(counter)
-nhoods <- nhoods %>%
-    mutate(landmark.Buffer = ifelse(is.na(landmark.Buffer), 0, landmark.Buffer))
 nhoods <-
   nhoods %>% 
   mutate(
@@ -392,7 +390,7 @@ nhoods <-
     landmark_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(landmark.sf)), 5))
 nhoods %>%
   st_drop_geometry() %>%
-  dplyr::select(sale_price, starts_with("landmark")) %>%
+  dplyr::select(sale_price, starts_with("landmark_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
@@ -407,8 +405,6 @@ nhoods$school.Buffer <- nhoods %>%
     st_buffer(660) %>% 
     aggregate(mutate(school.sf, counter = 1),., sum) %>%
     pull(counter)
-nhoods <- nhoods %>%
-    mutate(school.Buffer = ifelse(is.na(school.Buffer), 0, school.Buffer))
 nhoods <-
   nhoods %>% 
   mutate(
@@ -419,7 +415,7 @@ nhoods <-
     school_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(school.sf)), 5)) 
 nhoods %>%
   st_drop_geometry() %>%
-  dplyr::select(sale_price, starts_with("school")) %>%
+  dplyr::select(sale_price, starts_with("school_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
@@ -434,8 +430,6 @@ nhoods$college.Buffer <- nhoods %>%
     st_buffer(660) %>% 
     aggregate(mutate(college.sf, counter = 1),., sum) %>%
     pull(counter)
-nhoods <- nhoods %>%
-    mutate(college.Buffer = ifelse(is.na(college.Buffer), 0, college.Buffer))
 nhoods <-
   nhoods %>% 
   mutate(
@@ -446,7 +440,7 @@ nhoods <-
     college_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(college.sf)), 5))
 nhoods %>%
   st_drop_geometry() %>%
-  dplyr::select(sale_price, starts_with("college")) %>%
+  dplyr::select(sale_price, starts_with("college_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
@@ -461,8 +455,6 @@ nhoods$hospital.Buffer <- nhoods %>%
     st_buffer(660) %>% 
     aggregate(mutate(hospital.sf, counter = 1),., sum) %>%
     pull(counter)
-nhoods <- nhoods %>%
-    mutate(hospital.Buffer = ifelse(is.na(hospital.Buffer), 0, hospital.Buffer))
 nhoods <-
   nhoods %>% 
   mutate(
@@ -473,7 +465,7 @@ nhoods <-
     hospital_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(hospital.sf)), 5))  
 nhoods %>%
   st_drop_geometry() %>%
-  dplyr::select(sale_price, starts_with("hospital")) %>%
+  dplyr::select(sale_price, starts_with("hospital_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
@@ -488,8 +480,6 @@ nhoods$park.Buffer <- nhoods %>%
     st_buffer(660) %>% 
     aggregate(mutate(park.sf, counter = 1),., sum) %>%
     pull(counter)
-nhoods <- nhoods %>%
-    mutate(park.Buffer = ifelse(is.na(park.Buffer), 0, park.Buffer))
 nhoods <-
   nhoods %>% 
   mutate(
@@ -500,7 +490,7 @@ nhoods <-
     park_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(park.sf)), 5)) 
 nhoods %>%
   st_drop_geometry() %>%
-  dplyr::select(sale_price, starts_with("park")) %>%
+  dplyr::select(sale_price, starts_with("park_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
@@ -515,8 +505,6 @@ nhoods$market.Buffer <- nhoods %>%
     st_buffer(660) %>% 
     aggregate(mutate(market.sf, counter = 1),., sum) %>%
     pull(counter)
-nhoods <- nhoods %>%
-    mutate(market.Buffer = ifelse(is.na(market.Buffer), 0, market.Buffer))
 nhoods <-
   nhoods %>% 
   mutate(
@@ -527,7 +515,7 @@ nhoods <-
     market_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(market.sf)), 5))
 nhoods %>%
   st_drop_geometry() %>%
-  dplyr::select(sale_price, starts_with("market")) %>%
+  dplyr::select(sale_price, starts_with("market_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
@@ -597,11 +585,15 @@ feature.list <- to_train %>%
                  college.Buffer, college_nn1, college_nn2, college_nn3, college_nn4, college_nn5,
                  hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
                  park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
-                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5) %>%
-  
+                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5)
 
+```
+
+```{r}
 # 1.internal characteristics
-internal.list <- to_train %>%
+  
+internal.list <- 
+  to_train %>%
   dplyr:: select( Age, total_livable_area,
                  geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
                  number_of_bathrooms, number_of_bedrooms, number_stories) %>%
@@ -888,7 +880,8 @@ In the plot below, most of them do not have correlation, while `landmark.Buffer`
 ```{r correlation_matrix}
 external.list <- to_train %>%
   dplyr:: select(crime_nn5,
-                 p311_nn5,landmark.Buffer,
+                 p311_nn5,
+                 landmark.Buffer,
                  school_nn5,college.Buffer,
                  hospital.Buffer, hospital_nn1, 
                  park_nn2, market_nn3) %>%
@@ -980,7 +973,7 @@ stargazer(reg1, type = "html",
 
 ```{r}
 broom::glance(reg1) %>%
-  kable(caption = 'Table 4.2.2 Summary of Model Evaluation Parameters') %>%
+  kable(caption = 'Table Summary of Model Evaluation Parameters') %>%
   kable_styling("striped", full_width = F)
 
 ```
@@ -996,14 +989,31 @@ plot_summs(reg1, scale = TRUE)
 
 ```
 
-# 5 Split Data into Train/Test Set
+Then we split Data into Train/Test Set.
 
 ```{r}
+to_train <- to_train %>%
+    mutate(landmark.Buffer = ifelse(is.na(landmark.Buffer), 0, landmark.Buffer))
+to_train <- to_train %>%
+    mutate(school.Buffer = ifelse(is.na(school.Buffer), 0, school.Buffer))
+to_train <- to_train %>%
+    mutate(college.Buffer = ifelse(is.na(college.Buffer), 0, college.Buffer))
+to_train <- to_train %>%
+    mutate(hospital.Buffer = ifelse(is.na(hospital.Buffer), 0, hospital.Buffer))
+to_train <- to_train %>%
+    mutate(park.Buffer = ifelse(is.na(park.Buffer), 0, park.Buffer))
+to_train <- to_train %>%
+    mutate(market.Buffer = ifelse(is.na(market.Buffer), 0, market.Buffer))
+
+to_train <- st_join(to_train,district)
+to_predict <- st_join(to_predict,district)
+
 inTrain <- createDataPartition(
               y = paste(to_train$building_code_description, to_train$quality_grade), 
               p = .60, list = FALSE)
 philly.training <- to_train[inTrain,] 
-philly.test <- to_train[-inTrain,]  
+philly.test <- to_train[-inTrain,] 
+
  
 reg.training <- 
   lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
@@ -1053,7 +1063,7 @@ philly.test <-  philly.test[!with(philly.test,is.na(sale_price.Predict)),]
 
 ```
 
-## 5.1 Spatial Lags
+## 4.3 Spatial Lags
 
 We create a list of "neigbhors" using a "spatial weights matrix". As the price rises, the spatial lag of price also rises, which means our model is not so suitable for predicting high house price.
 
@@ -1094,7 +1104,7 @@ philly.test %>%
 
 ```
 
-## Do Errors Cluster? Using Moran's I
+## 4.4 Moran's I
 
 Then we did Moran's I. Moran
 
@@ -1115,7 +1125,7 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 
 ```
 
-## Predictions by neighborhood
+## 4.5 Predictions by neighborhood
 
 ```{r}
 
@@ -1130,15 +1140,22 @@ as.data.frame() %>%
 
 ```
 
-## Regression with neighborhood effects
+## 4.6 Regression with neighborhood effects
 
 Let's try to run the regression again, but this time with a neighborhood fixed effect
 
 ```{r}
 
 reg.nhood <- lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
-                                 dplyr::select(zip_code, sale_price,
-                                              total_livable_area, crimes.Buffer))
+                                 dplyr::select(DIST_NAME.x, sale_price, total_livable_area, Age, 
+                                               geographic_ward,garage_spaces,
+                                               fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                               number_of_bedrooms, number_stories,
+                                               crime_nn5,p311_nn5,landmark.Buffer,
+                                               school_nn5,college.Buffer,
+                                               hospital.Buffer, hospital_nn1, 
+                                               park_nn2, market_nn3,
+                                               TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty))
 
 philly.test.nhood <-
   philly.test %>%
@@ -1178,7 +1195,7 @@ st_drop_geometry(bothRegressions) %>%
 
 ```
 
-## Further examination of errors
+## 4.7 Further examination of errors
 
 Predicted versus observed plots - what does it mean if the line is above or below y=x?
 
@@ -1206,7 +1223,7 @@ st_drop_geometry(bothRegressions) %>%
   group_by(Regression, DIST_NAME) %>%
   summarize(mean.MAPE = mean(sale_price.APE, na.rm = T)) %>%
   ungroup() %>% 
-  left_join(district, by = c("DIST_NAME" = "DIST_NAME")) %>%
+  left_join(district, by = c("DIST_NAME.x" = "DIST_NAME.x")) %>%
     st_sf() %>%
     ggplot() + 
       geom_sf(aes(fill = mean.MAPE)) +
@@ -1218,10 +1235,8 @@ st_drop_geometry(bothRegressions) %>%
       mapTheme()
 
 ```
-# Export prediction
 
-
-## Race and income context of predictions
+## 4.8 Race and income context of predictions
 
 What is the race and income context of Boston census tracts, and how does this relate to our model performance?
 
@@ -1262,12 +1277,13 @@ st_join(bothRegressions, tracts20) %>%
 
 ```
 
-# 6 Discussion
+# 5 Discussion
 
--   Accuracy:
+-   Accuracy: 
 
 -   Generalizability:
 
-# 7 Conclusion and recommendation
+# 6 Conclusion and recommendation
+
 
 
