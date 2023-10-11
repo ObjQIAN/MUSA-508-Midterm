@@ -1214,7 +1214,8 @@ as.data.frame() %>%
 
 ## 4.7 Regression with neighborhood effects
 
-Then we ran the regression again, but this time with a neighborhood fixed effect.
+
+Here, we engaged with neighborhood effects into our regression model to explain for the uneven distribution of sales price across different neighborhood and planning district in Philadelphia, providing a more nuanced understanding of house prices.
 
 ```{r}
 
@@ -1275,6 +1276,8 @@ st_drop_geometry(bothRegressions) %>%
 ```
 
 ## 4.8 Predicted Map (Test Set)
+
+We visualize our model's predictions on the test set, offering a map overview of the estimated house sale prices across Philadelphia's neighborhoods.
 
 ```{r}
 
