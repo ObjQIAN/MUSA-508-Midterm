@@ -1,8 +1,18 @@
 ---
-title: "MUSA 508, Lab 4 - Spatial Machine Learning Pt. 1"
-author: "Harris, Fichman, and Steif - 2022/23"
-output: html_document
+title: "Predicting Housing Prices"
+author: "Qiansheng Wang, Yixuan Zhou"
+date: 2023-10-11
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
 
 # 1 Introduction
 
@@ -566,7 +576,7 @@ to_train <-
 
 ```
 
-### 2.1.3 Summary Statistics of Features
+### 2.1.3 Summary Statistics
 
 #### (1) Internal Characteristics
 
@@ -951,6 +961,8 @@ ggscatter(philly_sub_200k,
 
 ## 4.1 Multivariate OLS Regression
 
+### 4.1.1 Table of results (training set)
+
 ```{r mutlivariate_regression}
 reg1 <- lm(sale_price ~ ., data = philly_sub_200k %>% 
                                  dplyr::select(sale_price, Age, total_livable_area, 
@@ -971,6 +983,8 @@ stargazer(reg1, type = "html",
           single.row = TRUE)
 ```
 
+### 4.1.2 Summary of Model Evaluation Parameters
+
 ```{r}
 broom::glance(reg1) %>%
   kable(caption = 'Table Summary of Model Evaluation Parameters') %>%
@@ -989,6 +1003,9 @@ plot_summs(reg1, scale = TRUE)
 
 ```
 
+
+## 4.3 Table of Goodness of Fit
+
 Then we split Data into Train/Test Set.
 
 ```{r}
@@ -1005,29 +1022,58 @@ to_train <- to_train %>%
 to_train <- to_train %>%
     mutate(market.Buffer = ifelse(is.na(market.Buffer), 0, market.Buffer))
 
-to_train <- st_join(to_train,district)
-to_predict <- st_join(to_predict,district)
-
 inTrain <- createDataPartition(
               y = paste(to_train$building_code_description, to_train$quality_grade), 
               p = .60, list = FALSE)
 philly.training <- to_train[inTrain,] 
 philly.test <- to_train[-inTrain,] 
 
- 
+philly.training <- philly.training%>%
+  dplyr::select(sale_price, Age, total_livable_area,
+               geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
+               number_of_bathrooms, number_of_bedrooms, number_stories,
+               toPredict, zip_code, geometry,
+               crimes.Buffer, crime_nn1, crime_nn2, crime_nn3, crime_nn4, crime_nn5,
+                 p311.Buffer, p311_nn1, p311_nn2, p311_nn3, p311_nn4, p311_nn5,
+                 landmark.Buffer, landmark_nn1, landmark_nn2, landmark_nn3, landmark_nn4, landmark_nn5,
+                 school.Buffer, school_nn1, school_nn2, school_nn3, school_nn4, school_nn5,
+                 college.Buffer, college_nn1, college_nn2, college_nn3, college_nn4, college_nn5,
+                 hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
+                 park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
+                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5, 
+                 DIST_NAME,building_code_description, quality_grade) 
+
+philly.test <- philly.test%>%
+  dplyr::select(sale_price, Age, total_livable_area,
+               geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
+               number_of_bathrooms, number_of_bedrooms, number_stories,
+               toPredict, zip_code, geometry,
+               crimes.Buffer, crime_nn1, crime_nn2, crime_nn3, crime_nn4, crime_nn5,
+                 p311.Buffer, p311_nn1, p311_nn2, p311_nn3, p311_nn4, p311_nn5,
+                 landmark.Buffer, landmark_nn1, landmark_nn2, landmark_nn3, landmark_nn4, landmark_nn5,
+                 school.Buffer, school_nn1, school_nn2, school_nn3, school_nn4, school_nn5,
+                 college.Buffer, college_nn1, college_nn2, college_nn3, college_nn4, college_nn5,
+                 hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
+                 park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
+                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5, 
+                 DIST_NAME,building_code_description, quality_grade) 
+
 reg.training <- 
   lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
                              dplyr::select(sale_price, total_livable_area, Age, 
-                                               geographic_ward,garage_spaces,
-                                               fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
-                                               number_of_bedrooms, number_stories,
-                                               crime_nn5,p311_nn5,landmark.Buffer,
-                                               school_nn5,college.Buffer,
-                                               hospital.Buffer, hospital_nn1, 
-                                               park_nn2, market_nn3))
+                                           geographic_ward,garage_spaces,
+                                           fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                           number_of_bedrooms, number_stories,
+                                           crime_nn5,p311_nn5,landmark.Buffer,
+                                           school_nn5,college.Buffer,
+                                           hospital.Buffer, hospital_nn1, 
+                                           park_nn2, market_nn3))
 
 philly.test <-
   philly.test %>%
+  na.omit() 
+
+philly.test <- philly.test %>%
   mutate(Regression = "Baseline Regression",
          sale_price.Predict = predict(reg.training, philly.test),
          sale_price.Error = sale_price.Predict - sale_price,
@@ -1043,6 +1089,37 @@ philly.test %>%
   kable_classic()
 
 ```
+
+## 4.4 Cross Validation
+
+```{r}
+fitControl <- trainControl(method = "cv", number = 100)
+set.seed(825)
+
+reg.cv <- 
+  train(sale_price ~ ., data = st_drop_geometry(to_train) %>% 
+          dplyr::select(sale_price, total_livable_area, Age, 
+                                           geographic_ward,garage_spaces,
+                                           fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                           number_of_bedrooms, number_stories,
+                                           crime_nn5,p311_nn5,landmark.Buffer,
+                                           school_nn5,college.Buffer,
+                                           hospital.Buffer, hospital_nn1, 
+                                           park_nn2, market_nn3,
+                                           DIST_NAME, TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty), 
+        method = "lm", trControl = fitControl, na.action = na.pass)
+
+ggplot(data = reg.cv$resample) +
+  geom_histogram(aes(x = reg.cv$resample$MAE), fill = 'orange') +
+  labs(title="Distribution of Cross-validation MAE",
+       subtitle = "K = 100\n",
+       caption = "Figure RESULT 4.2") +
+  xlab('MAE of Model 2') +
+  ylab('Count') +
+  plotTheme()
+
+```
+## 4.4 Cross Validation
 
 ```{r}
 
@@ -1062,8 +1139,6 @@ predicted_sub<-  to_predict %>%
 philly.test <-  philly.test[!with(philly.test,is.na(sale_price.Predict)),]
 
 ```
-
-## 4.3 Spatial Lags
 
 We create a list of "neigbhors" using a "spatial weights matrix". As the price rises, the spatial lag of price also rises, which means our model is not so suitable for predicting high house price.
 
@@ -1104,7 +1179,7 @@ philly.test %>%
 
 ```
 
-## 4.4 Moran's I
+## 4.5 Moran's I
 
 Then we did Moran's I. Moran
 
@@ -1125,7 +1200,7 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 
 ```
 
-## 4.5 Predictions by neighborhood
+## 4.6 Predictions by neighborhood
 
 ```{r}
 
@@ -1140,22 +1215,27 @@ as.data.frame() %>%
 
 ```
 
-## 4.6 Regression with neighborhood effects
+## 4.7 Regression with neighborhood effects
 
-Let's try to run the regression again, but this time with a neighborhood fixed effect
+Then we ran the regression again, but this time with a neighborhood fixed effect.
 
 ```{r}
 
-reg.nhood <- lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
-                                 dplyr::select(DIST_NAME.x, sale_price, total_livable_area, Age, 
-                                               geographic_ward,garage_spaces,
-                                               fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
-                                               number_of_bedrooms, number_stories,
-                                               crime_nn5,p311_nn5,landmark.Buffer,
-                                               school_nn5,college.Buffer,
-                                               hospital.Buffer, hospital_nn1, 
-                                               park_nn2, market_nn3,
-                                               TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty))
+philly.training <- st_join(philly.training, acsTractsPHL.2020)
+
+reg.nhood <- 
+  lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
+                             dplyr::select(sale_price, total_livable_area, Age, 
+                                           geographic_ward,garage_spaces,
+                                           fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                           number_of_bedrooms, number_stories,
+                                           crime_nn5,p311_nn5,landmark.Buffer,
+                                           school_nn5,college.Buffer,
+                                           hospital.Buffer, hospital_nn1, 
+                                           park_nn2, market_nn3,
+                                           DIST_NAME, TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty))
+
+philly.test <- st_join(philly.test, acsTractsPHL.2020)
 
 philly.test.nhood <-
   philly.test %>%
@@ -1168,7 +1248,6 @@ philly.test.nhood <-
 
 ```
 
-How do these models compare? We can bind our error info together and then examine!
 
 ```{r}
 
@@ -1181,7 +1260,6 @@ bothRegressions <-
 
 ```
 
-Why do these values differ from those in the book?
 
 ```{r}
 
@@ -1195,9 +1273,7 @@ st_drop_geometry(bothRegressions) %>%
 
 ```
 
-## 4.7 Further examination of errors
-
-Predicted versus observed plots - what does it mean if the line is above or below y=x?
+## 4.8 Further examination of errors
 
 ```{r}
 
@@ -1223,7 +1299,7 @@ st_drop_geometry(bothRegressions) %>%
   group_by(Regression, DIST_NAME) %>%
   summarize(mean.MAPE = mean(sale_price.APE, na.rm = T)) %>%
   ungroup() %>% 
-  left_join(district, by = c("DIST_NAME.x" = "DIST_NAME.x")) %>%
+  left_join(district, by = c("DIST_NAME" = "DIST_NAME")) %>%
     st_sf() %>%
     ggplot() + 
       geom_sf(aes(fill = mean.MAPE)) +
@@ -1236,7 +1312,7 @@ st_drop_geometry(bothRegressions) %>%
 
 ```
 
-## 4.8 Race and income context of predictions
+## 4.9 Race and income context of predictions
 
 What is the race and income context of Boston census tracts, and how does this relate to our model performance?
 
@@ -1284,6 +1360,7 @@ st_join(bothRegressions, tracts20) %>%
 -   Generalizability:
 
 # 6 Conclusion and recommendation
+
 
 
 
