@@ -1119,7 +1119,7 @@ ggplot(data = reg.cv$resample) +
   plotTheme()
 
 ```
-## 4.4 Cross Validation
+## 4.5 Spatial Lags
 
 ```{r}
 
@@ -1273,7 +1273,43 @@ st_drop_geometry(bothRegressions) %>%
 
 ```
 
-## 4.8 Further examination of errors
+## 4.8 Predicted Map (Test Set)
+
+```{r}
+
+ ggplot()+
+   geom_sf(data= DIST_NAME,fill='grey80',color='transparent')+
+   geom_sf(data = nhoods, aes(colour = q5(sale_price.Predict)), 
+          show.legend = "point", size = .35) +
+   scale_colour_manual(values = palette5,
+                   labels=qBr(nhoods,"sale_price.Predict"),
+                   name="Quintile\nBreaks") +
+  labs(title="Predocted House Sale Price, Philadelphia") +
+  mapTheme()
+
+```
+
+## 4.9 plot of MAPE by neighborhood mean price
+
+```{r}
+
+st_drop_geometry(philly.test) %>%
+  group_by(Regression, DIST_NAME) %>%
+  summarize(mean.MAPE = mean(abs(sale_price.APE * 100), na.rm = T)) %>%
+  ungroup() %>% 
+  left_join(DIST_NAME) %>%
+    st_sf() %>%
+    ggplot() + 
+      geom_sf(aes(fill = mean.MAPE)) +
+      scale_fill_gradient(low = palette5[1], high = palette5[5],
+                          name = "Mean Absolute Percent Error") +
+      labs(title = "Mean test set MAPE by neighborhood") +
+      mapTheme()
+
+```
+
+
+## 4.10 Further examination of errors
 
 ```{r}
 
@@ -1312,7 +1348,7 @@ st_drop_geometry(bothRegressions) %>%
 
 ```
 
-## 4.9 Race and income context of predictions
+## 4.11 Race and income context of predictions
 
 What is the race and income context of Boston census tracts, and how does this relate to our model performance?
 
@@ -1355,12 +1391,11 @@ st_join(bothRegressions, tracts20) %>%
 
 # 5 Discussion
 
--   Accuracy: 
+-   Accuracy: The predictive model demonstrates remarkable effectiveness in forecasting sales prices in Philadelphia. It adeptly captured over 94% of the anticipated price variations, showcasing a substantial success. Notably, the Mean Absolute Error (MAE) from the test set remains below 100k, while the Mean Absolute Percentage Error (MAPE) does not exceed 50%. However, there remains ample room for enhancement, particularly in the incorporation of additional factors, such as transportation.
 
--   Generalizability:
+-   Generalizability: With the inclusion of considerations like regional average income levels, poverty percentage, white population percentage, educational attainment, and other factors, our model exhibits enhanced adaptability and broad applicability. Nonetheless, it's important to acknowledge that this approach may inadvertently lead to regional disparities.
 
 # 6 Conclusion and recommendation
 
-
-
+We do not endorse the model due to its inclusion of racial bias, potentially leading to disadvantages for marginalized communities. Although it incorporates some intelligent features unique to Philadelphia not present in the prior model, resulting in improved accuracy, it is imperative to address the ethical implications of its application. To further diminish the error rate, it is advised to factor in additional amenities like local restaurants and bars (pending data availability), job opportunities, public events, public transportation, and spatial features such as zoning.
 
