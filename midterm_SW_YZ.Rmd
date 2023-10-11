@@ -909,7 +909,10 @@ ggcorrplot(
   plotTheme()
 
 ```
+
 #### (3) Spatial Characteristics
+
+There exists a robust positive correlation between MedRent, MedHHIn, and pctWhite. Conversely, there is a notable negative correlation between pctPoverty and MedRent, MedHHInc, as well as pctWhite.
 
 ```{r correlation_matrix3}
 
@@ -931,6 +934,10 @@ ggcorrplot(
 
 ```
 ### 3.3.2 Univarite correlation with Pearson's r - Correlation Coefficient
+
+Then we use Pearson’s R to initially judge the correlation and degree of explanation between features and sale_price.
+
+As can be seen from the figure below, sale_price generally increases with the increase of total_livable_area, and there is a significant positive correlation (R-square = 0.33, p<2.2e-16).
 
 ```{r uni_variate_Regression}
 
@@ -960,6 +967,8 @@ ggscatter(philly_sub_200k,
 
 ### 4.1.1 Table of results (training set)
 
+We performed regression analysis on internal features, external features and spatial features and sale_price. In Table 4.1 Summary Statistics of Model, we can see that these features can jointly explain 94% of sale_price (p<2.2e-16). Among them, the relationship between total_livable_area, garage_spaces, exterior_condition, landmark.Buffer, market_nn3, TotalPop, MedHHInc, pctBachelors and pctPovertyy and sale_price is very significant.
+
 ```{r mutlivariate_regression,warning = FALSE}
 reg1 <- lm(sale_price ~ ., data = philly_sub_200k %>% 
                                  dplyr::select(sale_price, Age, total_livable_area, 
@@ -982,6 +991,8 @@ stargazer(reg1, type = "html",
 
 ### 4.1.2 Summary of Model Evaluation Parameters
 
+The following is Table Summary of Model Evaluation Parameters.
+
 ```{r}
 broom::glance(reg1) %>%
   kable(caption = 'Table Summary of Model Evaluation Parameters') %>%
@@ -990,6 +1001,8 @@ broom::glance(reg1) %>%
 ```
 
 ## 4.2 Marginal Response Plots
+
+We selected the feature with strong explanatory power for sale_price to explore its boundary influence. As you can see from the figure below, our model performs better when total_livable_area is in the 500-2000 range.
 
 ```{r effect_plots}
 ## Plot of marginal response
@@ -1089,6 +1102,8 @@ philly.test %>%
 
 ## 4.4 Cross Validation
 
+Spatial Lag of Price is obviously positively related to Sale price. Spatial Lag of Error is relatively gentle.
+
 ```{r}
 fitControl <- trainControl(method = "cv", number = 100)
 set.seed(825)
@@ -1116,6 +1131,7 @@ ggplot(data = reg.cv$resample) +
   plotTheme()
 
 ```
+
 ## 4.5 Spatial Lags
 
 ```{r}
@@ -1178,7 +1194,7 @@ philly.test %>%
 
 ## 4.5 Moran's I
 
-Then we did Moran's I. Moran
+Then we did Moran's I. From the figure below, Moran’s I deviates far from 0.0, indicating that there is an obvious spatial lag.
 
 ```{r}
 
@@ -1198,6 +1214,8 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 ```
 
 ## 4.6 Predictions by neighborhood
+
+Here's how our estimated average house prices compare to actual average house prices by region. The two are generally close, but there are still certain deviations.
 
 ```{r}
 
