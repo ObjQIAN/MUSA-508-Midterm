@@ -1,10 +1,37 @@
 ---
-title: "MUSA 508, Lab 4 - Spatial Machine Learning Pt. 1"
-author: "Harris, Fichman, and Steif - 2022/23"
-output: html_document
+title: "Predicting Housing Prices"
+author: "Shengqian Wang, Yixuan Zhou"
+date: 2023-10-11
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, message = FALSE)
+
+```
+
+
+# 1 Introduction
+
+The Philadelphia real estate market boasts diverse neighborhoods, each with unique qualities, shaping a distinctive landscape for predicting home prices. Unlike many cities, Philadelphia's real estate dynamics are influenced by historic preservation, economic diversity, and a thriving academic sector.
+
+To better cater to Philadelphia's unique housing market, we conducted a study aimed at enhancing the precision and relevance of home price forecasts. Our objective is to create a robust model that considers both internal and external factors affecting urban housing prices.
+
+We employed ordinary least squares (OLS) linear regression models, integrating data from various sources into a comprehensive framework. This encompasses data on a home's inherent features, generously provided by our clients, alongside external data from Philadelphia Open Data and the American Community Survey by the U.S. Census Bureau. This combination of interior, exterior, and spatial data is crucial for building a model that accurately reflects Philadelphia's dynamic housing market.
+
+This report outlines our methodology, underscoring the significance of local context and internal characteristics. While our model is a work in progress, we anticipate it will yield valuable insights into the factors influencing homebuyer preferences, shaping Philadelphia's evolving housing market.
+
+# 2 Data Manipulation and Visualization
+
+## 2.0 Set up
+
+In this section, we initiated the process by loading essential libraries, establishing plot theme configurations, and defining map theme settings. Additionally, we identified and prepared functions for quintile breaks and calculating the average nearest neighbor distance, setting the stage for a more in-depth analysis.
+
+```{r , include=FALSE}
 
 # You can set some global options for knitting chunks
 
@@ -31,6 +58,7 @@ library(jtools)     # for regression model plots
 library(ggstance) # to support jtools plots
 library(ggpubr)    # plotting R^2 value on ggplot point scatter
 library(broom.mixed) # needed for effects plots
+library(stargazer)
 
 # functions and data directory
 root.dir = "https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/DATA/"
@@ -40,98 +68,38 @@ source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-L
 palette5 <- c("#25CB10", "#5AB60C", "#8FA108",   "#C48C04", "#FA7800")
 ```
 
-# MUSA 508, Lab 4 - Spatial Machine Learning Pt. 1
+## 2.1 Data Wrangling
 
-The learning objectives of this lab are:
+### 2.1.1 Data loading
 
-*   Review Topics: loading data, {dplyr}, mapping and plotting with {ggplot2}
-*   New: Understanding how we created spatial indicators with K-Nearest Neighbor and the `nn_function()` function
-*   Simple correlation and the Pearson's r - Correlation Coefficient
-*   Linear Regression model goodness-of-fit and R2 - Coefficient of Determination
+Here are the data we will use in our study.
 
-The in-class exercise at the end encourages students to modify the existing code to create a different regression and interpret it. Finally, there is a prompt to create a new feature and add it to the regression.
+#### (1) House Price and Internal Characteristics
 
-## Data Wrangling
+As evident from the chart below, property values are elevated along the central and northern peripheries of South Philadelphia, with prices tapering towards the center.
 
-See if you can change the chunk options to get rid of the text outputs
-
-```{r load_key, warning = FALSE, eval = FALSE}
-census_api_key("5c7b1ebb206012789759942ddf1acbb882f937ad", overwrite = TRUE)
-```
-
-```{r acs_vars}
-acs_vars <- c("B01001_001E", # ACS total Pop estimate
-              "B25002_001E", # Estimate of total housing units
-              "B25002_003E", # Number of vacant housing units
-              "B19013_001E", # Median HH Income ($)
-              "B02001_002E", # People describing themselves as "white alone"
-              "B06009_006E") # Total graduate or professional degree
-```
-
-```{r get_acs_2020, cache = TRUE, message = FALSE, warning = FALSE}
-acsTractsPHL.2020 <- get_acs(geography = "tract",
-                             year = 2020, 
-                             variables = acs_vars, 
-                             geometry = TRUE, 
-                             state = "PA", 
-                             county = "Philadelphia", 
-                             output = "wide") %>%
-                            st_transform('ESRI:102729')
-```
-
-
-
-```{r read_data}
-
-nhoods <- 
-  st_read("E:/Downloads/studentData.geojson") %>%
+```{r read_data,results = FALSE,warning = FALSE, message = FALSE}
+# import planning district and housing data
+district <- 
+  st_read("https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/Planning_Districts.geojson") %>%
+  dplyr::select(DIST_NAME,ABBREV) %>% #Select data for later prediction
   st_transform('ESRI:102729')
 
-to_predict <-
-  nhoods %>%
-  dplyr::filter(toPredict == 'CHALLENGE') #Select data for later prediction
-
-#??
-#Philadelphia <- 
- # read.csv(file.path(root.dir,"/Chapter3_4/phillyHousePriceData_clean.csv"))
-
-
-# Load crime data
-philadelphiCrimes <- read.csv('https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/Philadelphia_crime.csv') 
-
-# Create sf and select Weapon Violations
-philadelphiCrimes.sf <-
-  philadelphiCrimes %>%
-  filter(text_general_code == "Weapon Violations",
-  lat > -1) %>%
-  dplyr::select(lat, lng) %>%
-  na.omit() %>%
-  st_as_sf(coords = c( "lng","lat"), crs = "EPSG:4326") %>%
-  st_transform('ESRI:102729') %>%
-  distinct()
-
-
-
-
-# Load 311 data
-philadelphia311 <- read.csv('https://phl.carto.com/api/v2/sql?filename=public_cases_fc&format=csv&skipfields=cartodb_id,the_geom,the_geom_webmercator&q=SELECT%20*%20FROM%20public_cases_fc%20WHERE%20requested_datetime%20%3E=%20%272022-01-01%27%20AND%20requested_datetime%20%3C%20%272023-01-01%27') %>%
-  dplyr::select(lat, lon) %>%
-  na.omit() %>%
-  st_as_sf(coords = c("lon", "lat"), crs = 4326, agr = "constant") %>%
+nhoods_0 <- 
+  st_read("https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/studentData.geojson") %>%
   st_transform('ESRI:102729')
 
-
-
+nhoods <- st_join(nhoods_0, district)%>%
+  mutate(Age = 2022 - year_built) 
+  
 ```
 
-
-
-```{r price_map}
+```{r price_map,results = FALSE,warning = FALSE, message = FALSE}
 # ggplot, reorder
 
 # Mapping data
 ggplot() +
-  geom_sf(data = acsTractsPHL.2020, fill = "grey40") +
+  geom_sf(data = district, fill = "grey40") +
   geom_sf(data = nhoods, aes(colour = q5(sale_price)), 
           show.legend = "point", size = .35) +
   scale_colour_manual(values = palette5,
@@ -139,31 +107,147 @@ ggplot() +
                    name="Quintile\nBreaks") +
   labs(title="House Sale Price, Philadelphia") +
   mapTheme()
+
 ```
 
+#### (2) Exterial Characteristics 
 
-### Create Nearest Spatial Features
-This is where we do two important things:
+The characterisitics 
+    -   `crime`: crimes happened during 2020-2022 in each census tract
+    -   `p311`: 311 calls during 2020-2022 in each census tract
+    -   `landmark`: An inventory of cultural landmarks found within the borders of the City of Philadelphia
+    -   `school`: Number of schools in each census tract including public schools, charter schools, many private schools, school annexes, and athletic fields and facilities.
+    -   `college`: colleges in each census tract
+    -   `hospital`：hospitals in each census tract
+    -   `park`: parks and recreaction places in each census tract
+    -   `market`: high-produce supply stores (e.g., supermarkets, produce stores, farmers’ markets) in each census tract
+    
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
-*   aggregate values within a buffer, and 
-*   create  `nearest neighbor` features. 
+# 1.Load crime data
+philadelphiCrimes <- read.csv('https://raw.githubusercontent.com/ObjQIAN/MUSA-508-Midterm/main/data/Philadelphia_crime.csv') 
+crime_codes_set <- c("Weapon Violations", "Thefts", "Robbery Firearm", 'Vandalism/Criminal Mischief', 'Homicide - Criminal ','Homicide - Criminal', 'Burglary Residential')
+philadelphiCrimes.sf <-
+  philadelphiCrimes %>%
+  filter(text_general_code %in% crime_codes_set,
+  lat > -1) %>%
+  dplyr::select(lat, lng) %>%
+  na.omit() %>%
+  st_as_sf(coords = c( "lng","lat"), crs = "EPSG:4326") %>%
+  st_transform('ESRI:102729') %>%
+  distinct()
 
-These are primary tools we use to add the local spatial signal to each of the points/rows/observations we are modeling. 
+# 2.Load 311 data and select related variables
+call311_codes_set <- c('Illegal Dumping','Abandoned Vehicle','Street Defect','Graffiti Removal','Dangerous Building Complaint','Homeless Encampment Request','Abandoned Bike','Opioid Response Unit')
+philadelphia311.sf <- read.csv('https://phl.carto.com/api/v2/sql?filename=public_cases_fc&format=csv&skipfields=cartodb_id,the_geom,the_geom_webmercator&q=SELECT%20*%20FROM%20public_cases_fc%20WHERE%20requested_datetime%20%3E=%20%272022-01-01%27%20AND%20requested_datetime%20%3C%20%272023-01-01%27') %>%
+  filter(service_name %in% call311_codes_set,
+  lat > -1) %>%
+  dplyr::select(lat, lon) %>%
+  na.omit() %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, agr = "constant") %>%
+  st_transform('ESRI:102729')
 
-#### Buffer aggregate
+# 3.Load landmark data
+landmark.sf <- st_read('http://data-phl.opendata.arcgis.com/datasets/5146960d4d014f2396cb82f31cd82dfe_0.geojson')%>%
+  dplyr::select(geometry) %>%
+  st_transform('ESRI:102729')
 
-The first code in this block buffers each point in `nhoods` by `660` ft and then uses `aggregate` to count the number of `phillyCrimes.sf` points within that buffer. There is a nested call to `mutate` to assign a value of `1` for each `phillyCrimes.sf` as under a column called `counter`. This allows each crime to have the same weight in when the `sun` function is called, but other weighting schemes could be used. Finally, the code `pull` pulls the aggregate values so they can be assigned as the `crimes.Buffer` column to `nhoods`. This is a little different from how you had assigned new columns before (usually using `mutate`), but valid. Your new feature `crimes.Buffer` is a count of all the crimes within 660ft of each reported crime. Why would it be god to know this when building a model?  
+# 4.Load school data
+school.sf <- st_read('https://opendata.arcgis.com/datasets/d46a7e59e2c246c891fbee778759717e_0.geojson')%>%
+  dplyr::select(geometry) %>% 
+  st_transform('ESRI:102729')
 
+# 5.Load college data
+college.sf <- st_read(
+  'https://opendata.arcgis.com/api/v3/datasets/8ad76bc179cf44bd9b1c23d6f66f57d1_0/downloads/data?format=geojson&spatialRefId=4326')%>%
+  dplyr::select(geometry) %>% 
+  st_transform('ESRI:102729')
 
-#### k nearest neighbor (knn)
+# 6.Load hospital data
+hospital.sf <- st_read('https://opendata.arcgis.com/datasets/df8dc18412494e5abbb021e2f33057b2_0.geojson')%>%
+  dplyr::select(geometry) %>% 
+  st_transform('ESRI:102729')
 
-The second block of code is using knn for averaging or summing values of a set number of (referred to as `k`) the nearest observations to each observation; it's *nearest neighbors*. With this, the model can understand the magnitude of values that are *near* each point. This adds a spatial signal to the model. 
+# 7.Load Parks and Recreation data
+park.sf <- st_read('https://opendata.arcgis.com/datasets/0cdc4a1e86c6463b9600f9d9fca39875_0.geojson')%>%
+  dplyr::select(geometry) %>% 
+  st_transform('ESRI:102729')
 
-<!-- The function `nn_function()` takes two pairs of **coordinates** form two `sf` **point** objects. You will see the use of `st_c()` which is just a shorthand way to get the coordinates with the `st_coordinates()` function. You can see where `st_c()` is created. Using `st_c()` within `mutate` converts the points to longitude/latitude coordinate pairs for the `nn_function()` to work with. If you put *polygon* features in there, it will error. Instead you can use `st_c(st_centroid(YourPolygonSfObject))` to get nearest neighbors to a polygon centroid. -->
+# 8.Load market data
+market.sf <- st_read('https://opendata.arcgis.com/datasets/53b8a1c653a74c92b2de23a5d7bf04a0_0.geojson')%>%
+  dplyr::select(geometry) %>% 
+  st_transform('ESRI:102729')
 
-The number `k` in the `nn_function()` function is the number of neighbors to to values from that are then averaged. Different types of crime (or anything else you measure) will require different values of `k`. *You will have to think about this!*. What could be the importance of `k` when you are making knn features for a violent crime versus and nuisance crime?
+```
 
-```{r Features}
+#### (3) Spatial Characteristics
+
+  -   Census Data: 
+  
+    -   `TotalPop`: ASC total population estimated in each census tract
+    -   `Whites`: People describing themselves as "white alone" in each census tract
+    -   `VacantHU`: Vacant house units in each census tract
+    -   `TotalHU`: Estimate of total housing units in each census tract
+    -   `FemalBachelors`: Female bachelors in each census tract
+    -   `MaleBachelors`: Male bachelors in each census tract
+    -   `MedHHInc`: Median household income ($) in each census tract
+    -   `MedRent`: Median Rent for properties in each census tract
+    -   `TotalPoverty`: Population living under the level of poverty in each census tract
+    
+  And based on the features above, we calculated several new features which are more intuitive. 
+    -   `pctWhite`: White population proportion in each census tract
+    -   `pctVacant`: Vacant house unit proportion in each census tract
+    -   `pctBachelors`: Bachelor population proportion in each census tract
+    -   `pctPoverty`: Poverty population proportion in each census tract
+  
+```{r load_key, warning = FALSE, eval = FALSE,results = FALSE,message = FALSE}
+
+census_api_key("5c7b1ebb206012789759942ddf1acbb882f937ad", overwrite = TRUE)
+
+```
+
+```{r,results = FALSE,warning = FALSE, message = FALSE}
+
+# Load acs data
+
+acsTractsPHL.2020 <- 
+  get_acs(geography = "tract", 
+          variables = c("B25026_001E","B02001_002E",
+                        "B25002_003E", "B25002_001E",
+                        "B15001_050E","B15001_009E",
+                        "B19013_001E","B25058_001E",
+                        "B06012_002E"), 
+          year=2020, state=42, county=101, 
+          geometry=TRUE, output="wide") %>%
+  st_transform('ESRI:102729') %>%
+  rename(TotalPop = B25026_001E, 
+         Whites = B02001_002E,
+         VacantHU = B25002_003E,
+         TotalHU = B25002_001E,
+         FemaleBachelors = B15001_050E, 
+         MaleBachelors = B15001_009E,
+         MedHHInc = B19013_001E, 
+         MedRent = B25058_001E,
+         TotalPoverty = B06012_002E) %>%
+  dplyr::select(-NAME, -starts_with("B")) %>%
+  mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
+         pctVacant = ifelse(TotalPop > 0, VacantHU / TotalPop,0),
+         pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
+         pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+         year = "2020") %>%
+  dplyr::select(-Whites, -VacantHU, -TotalHU, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -year, -GEOID) 
+
+nhoods <- st_join(nhoods, acsTractsPHL.2020)
+
+```
+
+### 2.1.2 Feature Engineering
+
+In this part, we calculated the number of different features within a radius of 0.5 miles and calculated the distance using KNN (k=1-5). Then we performed preliminary regressions on these variables and house prices respectively, compared slope, and selected the best-performing ones as the features that we would use in later regression.
+
+#### (1) Crime Data Set
+
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
 # Counts of crime per buffer of house sale
 nhoods$crimes.Buffer <- nhoods %>% 
@@ -191,137 +275,677 @@ nhoods <-
       
       crime_nn5 = nn_function(st_coordinates(nhoods), 
                               st_coordinates(philadelphiCrimes.sf), k = 5)) 
+
 ```
 
 ```{r assault density}
 ## Plot assault density
-ggplot() + geom_sf(data = acsTractsPHL.2020, fill = "grey40") +
+ggplot() + 
+  geom_sf(data = district, fill = "grey40") +
   stat_density2d(data = data.frame(st_coordinates(philadelphiCrimes.sf)), 
                  aes(X, Y, fill = ..level.., alpha = ..level..),
                  size = 0.01, bins = 40, geom = 'polygon') +
   scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
   scale_alpha(range = c(0.00, 0.35), guide = "none") +
-  labs(title = "Density of WA, PHL") +
+  labs(title = "Density of Serious Crimes, Philadelphia") +
   mapTheme()
 ```
 
-## Analyzing associations
+From the charts below, `crime_nn5` is the one with the strongest correlation with `sale_price`. We will use crime_nn5 as a factor in the following study.
 
-Run these code blocks...
-Notice the use of `st_drop_geometry()`, this is the correct way to go from a `sf` spatial dataframe to a regular dataframe with no spatial component.
+```{r}
 
-Can somebody walk me through what they do?
-
-Can you give me a one-sentence description of what the takeaway is?
-
-
-```{r Correlation}
-
-## Home Features cor
-st_drop_geometry(nhoods) %>% 
-  mutate(Age = 2022 - year_built) %>%
-  dplyr::select(sale_price, total_livable_area, Age, crimes.Buffer) %>%
-  filter(sale_price <= 1000000, Age < 500) %>%
-  gather(Variable, Value, -sale_price) %>% 
-   ggplot(aes(Value, sale_price)) +
-     geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
-     facet_wrap(~Variable, ncol = 3, scales = "free") +
-     labs(title = "Price as a function of continuous variables") +
-     plotTheme()
-```
-
-Can we resize this somehow to make it look better?
-
-```{r crime_corr}
 ## Crime cor
 nhoods %>%
   st_drop_geometry() %>%
-  mutate(Age = 2022 - year_built) %>%
   dplyr::select(sale_price, starts_with("crime_")) %>%
   filter(sale_price <= 1000000) %>%
   gather(Variable, Value, -sale_price) %>% 
    ggplot(aes(Value, sale_price)) +
-     geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
      facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of crimes") +
+     plotTheme()
+
+```
+
+#### (2) 311 Data Set
+
+In the figure below, it is shown that the distribution of the number of 311 calls is similar to the hot spots of crime distribution, but is more overall and dispersed.
+
+```{r }
+
+# Counts of 311 per buffer of house sale
+nhoods$p311.Buffer <- nhoods %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(philadelphia311.sf, counter = 1),., sum) %>%
+    pull(counter)
+
+## Nearest Neighbor Feature
+
+nhoods <-
+  nhoods %>% 
+    mutate(
+      p311_nn1 = nn_function(st_coordinates(nhoods), 
+                              st_coordinates(philadelphia311.sf), k = 1),
+      
+      p311_nn2 = nn_function(st_coordinates(nhoods), 
+                              st_coordinates(philadelphia311.sf), k = 2), 
+      
+      p311_nn3 = nn_function(st_coordinates(nhoods), 
+                              st_coordinates(philadelphia311.sf), k = 3), 
+      
+      p311_nn4 = nn_function(st_coordinates(nhoods), 
+                              st_coordinates(philadelphia311.sf), k = 4), 
+      
+      p311_nn5 = nn_function(st_coordinates(nhoods), 
+                              st_coordinates(philadelphia311.sf), k = 5)) 
+
+```
+
+```{r 311 density}
+## Plot 311 density
+ggplot() + geom_sf(data = district, fill = "grey40") +
+  stat_density2d(data = data.frame(st_coordinates(philadelphia311.sf)), 
+                 aes(X, Y, fill = ..level.., alpha = ..level..),
+                 size = 0.01, bins = 40, geom = 'polygon') +
+  scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
+  scale_alpha(range = c(0.1, 0.35), guide = "none") +
+  labs(title = "Density of 311, PHL") +
+  mapTheme()
+```
+From the charts below, `p311_nn5` is the one with the strongest correlation with `sale_price`.
+
+```{r }
+# 311_nn plot
+
+nhoods %>%
+  st_drop_geometry() %>%
+  dplyr::select(sale_price, starts_with("p311")) %>%
+  filter(sale_price <= 1000000) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of 311 calls") +
+     plotTheme()
+
+```
+
+#### (3) Amendity data
+
+As we can see in the plots below, `landmark.Buffer`,`school_nn5`,`college.Buffer`,`hospital_nn1`, `market_nn3`have the strongest correlation with `sale_price`.
+
+```{r}
+
+# 1.landmark
+nhoods$landmark.Buffer <- nhoods %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(landmark.sf, counter = 1),., sum) %>%
+    pull(counter)
+nhoods <-
+  nhoods %>% 
+  mutate(
+    landmark_nn1 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(landmark.sf)), 1),
+    landmark_nn2 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(landmark.sf)), 2), 
+    landmark_nn3 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(landmark.sf)), 3), 
+    landmark_nn4 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(landmark.sf)), 4), 
+    landmark_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(landmark.sf)), 5))
+nhoods %>%
+  st_drop_geometry() %>%
+  dplyr::select(sale_price, starts_with("landmark_")) %>%
+  filter(sale_price <= 1000000) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of landmarks") +
+     plotTheme()
+
+# 2.school
+nhoods$school.Buffer <- nhoods %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(school.sf, counter = 1),., sum) %>%
+    pull(counter)
+nhoods <-
+  nhoods %>% 
+  mutate(
+    school_nn1 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(school.sf)), 1),
+    school_nn2 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(school.sf)), 2), 
+    school_nn3 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(school.sf)), 3), 
+    school_nn4 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(school.sf)), 4), 
+    school_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(school.sf)), 5)) 
+nhoods %>%
+  st_drop_geometry() %>%
+  dplyr::select(sale_price, starts_with("school_")) %>%
+  filter(sale_price <= 1000000) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of schools") +
+     plotTheme()
+
+# 3.college
+nhoods$college.Buffer <- nhoods %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(college.sf, counter = 1),., sum) %>%
+    pull(counter)
+nhoods <-
+  nhoods %>% 
+  mutate(
+    college_nn1 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(college.sf)), 1),
+    college_nn2 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(college.sf)), 2), 
+    college_nn3 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(college.sf)), 3), 
+    college_nn4 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(college.sf)), 4), 
+    college_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(college.sf)), 5))
+nhoods %>%
+  st_drop_geometry() %>%
+  dplyr::select(sale_price, starts_with("college_")) %>%
+  filter(sale_price <= 1000000) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of colleges") +
+     plotTheme()
+
+# 4.hospital
+nhoods$hospital.Buffer <- nhoods %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(hospital.sf, counter = 1),., sum) %>%
+    pull(counter)
+nhoods <-
+  nhoods %>% 
+  mutate(
+    hospital_nn1 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(hospital.sf)), 1),
+    hospital_nn2 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(hospital.sf)), 2), 
+    hospital_nn3 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(hospital.sf)), 3), 
+    hospital_nn4 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(hospital.sf)), 4), 
+    hospital_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(hospital.sf)), 5))  
+nhoods %>%
+  st_drop_geometry() %>%
+  dplyr::select(sale_price, starts_with("hospital_")) %>%
+  filter(sale_price <= 1000000) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of hospitals") +
+     plotTheme()
+
+# 5.parks and recreation
+nhoods$park.Buffer <- nhoods %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(park.sf, counter = 1),., sum) %>%
+    pull(counter)
+nhoods <-
+  nhoods %>% 
+  mutate(
+    park_nn1 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(park.sf)), 1),
+    park_nn2 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(park.sf)), 2), 
+    park_nn3 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(park.sf)), 3), 
+    park_nn4 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(park.sf)), 4), 
+    park_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(park.sf)), 5)) 
+nhoods %>%
+  st_drop_geometry() %>%
+  dplyr::select(sale_price, starts_with("park_")) %>%
+  filter(sale_price <= 1000000) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of parks") +
+     plotTheme()
+
+# 6.market
+nhoods$market.Buffer <- nhoods %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(market.sf, counter = 1),., sum) %>%
+    pull(counter)
+nhoods <-
+  nhoods %>% 
+  mutate(
+    market_nn1 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(market.sf)), 1),
+    market_nn2 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(market.sf)), 2), 
+    market_nn3 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(market.sf)), 3), 
+    market_nn4 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(market.sf)), 4), 
+    market_nn5 = nn_function(st_coordinates(st_centroid(nhoods)), st_coordinates(st_centroid(market.sf)), 5))
+nhoods %>%
+  st_drop_geometry() %>%
+  dplyr::select(sale_price, starts_with("market_")) %>%
+  filter(sale_price <= 1000000) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+     geom_smooth(data = . %>% filter(sale_price > 0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, nrow = 1, scales = "free") +
+     labs(title = "Price as a function of markets") +
+     plotTheme()
+
+```
+
+```{r}
+## Plot landmarks density
+ggplot() + geom_sf(data = district, fill = "grey40") +
+  stat_density2d(data = data.frame(st_coordinates(landmark.sf)), 
+                 aes(X, Y, fill = ..level.., alpha = ..level..),
+                 size = 0.01, bins = 40, geom = 'polygon') +
+  scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
+  scale_alpha(range = c(0.1, 0.35), guide = "none") +
+  labs(title = "Density of landmarks, Philadelphia") +
+  mapTheme()
+
+```
+
+```{r}
+## Plot schools density
+ggplot() + geom_sf(data = district, fill = "grey40") +
+  stat_density2d(data = data.frame(st_coordinates(school.sf)), 
+                 aes(X, Y, fill = ..level.., alpha = ..level..),
+                 size = 0.01, bins = 40, geom = 'polygon') +
+  scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
+  scale_alpha(range = c(0.1, 0.35), guide = "none") +
+  labs(title = "Density of schools, Philadelphia") +
+  mapTheme()
+
+```
+
+```{r}
+
+#select the data for prediction and training model.
+to_predict <-
+  nhoods %>%
+  dplyr::filter(toPredict == 'CHALLENGE') #Select data for later prediction
+
+to_train <-
+  nhoods %>%
+  dplyr::filter(toPredict == 'MODELLING') #Select data for training Model
+
+```
+
+### 2.1.3 Summary Statistics
+
+For this part, we summarized and reviewed the data and separated them to Internal Characteristics, External Characteristics, and Spatial Characteristics
+
+#### (1) Internal Characteristics
+
+```{r}
+
+# all useful columns
+feature.list <- to_train %>%
+  dplyr::select(sale_price, Age, total_livable_area,
+               geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
+               number_of_bathrooms, number_of_bedrooms, number_stories,
+               toPredict, zip_code, geometry,
+               crimes.Buffer, crime_nn1, crime_nn2, crime_nn3, crime_nn4, crime_nn5,
+                 p311.Buffer, p311_nn1, p311_nn2, p311_nn3, p311_nn4, p311_nn5,
+                 landmark.Buffer, landmark_nn1, landmark_nn2, landmark_nn3, landmark_nn4, landmark_nn5,
+                 school.Buffer, school_nn1, school_nn2, school_nn3, school_nn4, school_nn5,
+                 college.Buffer, college_nn1, college_nn2, college_nn3, college_nn4, college_nn5,
+                 hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
+                 park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
+                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5)
+
+```
+
+```{r,results = FALSE,warning = FALSE, message = FALSE}
+# 1.internal characteristics
+  
+internal.list <- 
+  to_train %>%
+  dplyr:: select( Age, total_livable_area,
+                 geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
+                 number_of_bathrooms, number_of_bedrooms, number_stories) %>%
+  st_drop_geometry()
+
+
+stargazer(data = internal.list, type = "html", 
+          title = " Table.1 Summary Statistics of Internal Characteristics ",
+          header = FALSE,
+          single.row = TRUE)
+
+```
+
+#### (2) External Characteristics
+
+```{r,results = FALSE,warning = FALSE, message = FALSE}
+
+# 2.external characteristics1
+external.list <- to_train %>%
+  dplyr:: select(crimes.Buffer, crime_nn1, crime_nn2, crime_nn3, crime_nn4, crime_nn5,
+                 p311.Buffer, p311_nn1, p311_nn2, p311_nn3, p311_nn4, p311_nn5,
+                 landmark.Buffer, landmark_nn1, landmark_nn2, landmark_nn3, landmark_nn4, landmark_nn5,
+                 school.Buffer, school_nn1, school_nn2, school_nn3, school_nn4, school_nn5,
+                 college.Buffer, college_nn1, college_nn2, college_nn3, college_nn4, college_nn5,
+                 hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
+                 park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
+                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5) %>%
+  st_drop_geometry() 
+
+stargazer(data = external.list, type = "html", 
+          title = " Table.2 Summary Statistics of External Characteristics1 ",
+          header = FALSE,
+          single.row = TRUE)
+
+```
+
+#### (3) Spatial Characteristics
+
+```{r,results = FALSE,warning = FALSE, message = FALSE}
+# 3. external characteristics2 - acs features
+
+census.list <- to_train %>%
+  dplyr:: select( TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty)
+
+stargazer(census.list, type = "html", 
+          title = "Table.3 Summary Statistics of External Characteristics - Census Data ",
+          header = FALSE,
+          single.row = TRUE)
+
+```
+
+
+# 3 Analyzing Associations
+
+## 3.1 Sale Price as a Function of Numeric Features
+
+We use the scatter plot to initially determine whether the following Numeric Features are suitable as our variables. As can be seen from the chart below, some of the features that may be useful are: `Age`, `depth`, `frontage`, `total_livable_area`, `geographic_ward`, `garage_spaces`, `crime_nn5`,`p311_nn5`, `landmark.Buffer`,`school_nn5`,`college.Buffer`,`hospital_nn1`, `market_nn3`.
+
+```{r Correlation}
+
+## Home Features cor
+
+st_drop_geometry(to_train) %>% 
+  dplyr::select(sale_price, total_livable_area, Age,
+                depth, frontage, off_street_open, geographic_ward, garage_spaces,
+                crime_nn5, p311_nn5, landmark.Buffer, school_nn5, college.Buffer, hospital_nn1, market_nn3) %>%
+  filter(sale_price <= 1000000, Age < 500, total_livable_area <10000, frontage < 500) %>%
+  gather(Variable, Value, -sale_price) %>% 
+   ggplot(aes(Value, sale_price)) +
+     geom_point(size = .5) + 
+    geom_smooth(data = . %>% filter(sale_price >0), method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, ncol = 3, scales = "free") +
      labs(title = "Price as a function of continuous variables") +
      plotTheme()
+
 ```
 
-## Correlation matrix
+## 3.2 Sale Price as a Function of Categorical Features
 
-A correlation matrix gives us the pairwise correlation of each set of features in our data. It is usually advisable to include the target/outcome variable in this so we can understand which features are related to it.
+We use the histograms to initially determine whether the following categorical features are suitable as our variables. As can be seen from the chart below, some of the features that may be useful are: `exterior_condition`, `fireplaces`, `interior_condition`, `number_of_bathrooms`, `number_of_bedrooms`, `number_stories`.
 
-Some things to notice in this code; we use `select_if()` to select only the features that are numeric. This is really handy when you don't want to type or hard-code the names of your features; `ggcorrplot()` is a function from the `ggcorrplot` package.
+```{r}
 
-**Let's take a few minutes to interpret this**
+to_train %>%
+  dplyr::select(sale_price, exterior_condition) %>%
+  mutate(exterior_condition = as.factor(exterior_condition)) %>%
+  filter(sale_price <= 1000000) %>%
+  group_by(exterior_condition) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  ggplot(aes(x = exterior_condition, y = avg_sale_price,alpha = 0.3)) +
+    geom_bar(stat = "identity") +
+    labs(
+      title = "Average Sale Price by Exterior Condition",
+      y = "Average Sale Price"
+    ) +
+    plotTheme() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
+
+to_train %>%
+  dplyr::select(sale_price, fireplaces) %>%
+  mutate(fireplaces = as.factor(fireplaces)) %>%
+  filter(sale_price <= 1000000) %>%
+  filter(!is.na(fireplaces)) %>%
+  group_by(fireplaces) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  ggplot(aes(x = fireplaces, y = avg_sale_price,alpha = 0.3)) +
+    geom_bar(stat = "identity") +
+    labs(
+      title = "Average Sale Price by Fireplaces",
+      y = "Average Sale Price"
+    ) +
+    plotTheme() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
+
+to_train %>%
+  dplyr::select(sale_price, interior_condition) %>%
+  mutate(interior_condition = as.factor(interior_condition)) %>%
+  filter(sale_price <= 1000000) %>%
+  filter(!is.na(interior_condition)) %>%
+  group_by(interior_condition) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  ggplot(aes(x = interior_condition, y = avg_sale_price,alpha = 0.3)) +
+    geom_bar(stat = "identity") +
+    labs(
+      title = "Average Sale Price by Interior Condition",
+      y = "Average Sale Price"
+    ) +
+    plotTheme() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
+
+to_train %>%
+  dplyr::select(sale_price, number_of_bathrooms) %>%
+  mutate(number_of_bathrooms = as.factor(number_of_bathrooms)) %>%
+  filter(sale_price <= 1000000) %>%
+  filter(!is.na(number_of_bathrooms)) %>%
+  group_by(number_of_bathrooms) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  ggplot(aes(x = number_of_bathrooms, y = avg_sale_price,alpha = 0.3)) +
+    geom_bar(stat = "identity") +
+    labs(
+      title = "Average Sale Price by Number of Bathrooms",
+      y = "Average Sale Price"
+    ) +
+    plotTheme() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
+
+to_train %>%
+  dplyr::select(sale_price, number_of_bedrooms) %>%
+  mutate(number_of_bedrooms = as.factor(number_of_bedrooms)) %>%
+  filter(sale_price <= 1000000) %>%
+  filter(!is.na(number_of_bedrooms)) %>%
+  group_by(number_of_bedrooms) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  ggplot(aes(x = number_of_bedrooms, y = avg_sale_price,alpha = 0.3)) +
+    geom_bar(stat = "identity") +
+    labs(
+      title = "Average Sale Price by Number of Bedrooms",
+      y = "Average Sale Price"
+    ) +
+    plotTheme() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
+
+to_train %>%
+  dplyr::select(sale_price, number_stories) %>%
+  mutate(number_stories = as.factor(number_stories)) %>%
+  filter(sale_price <= 1000000) %>%
+  filter(!is.na(number_stories)) %>%
+  group_by(number_stories) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  ggplot(aes(x = number_stories, y = avg_sale_price,alpha = 0.3)) +
+    geom_bar(stat = "identity") +
+    labs(
+      title = "Average Sale Price by Number of Stories",
+      y = "Average Sale Price"
+    ) +
+    plotTheme() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = 'none')
+
+```
+
+```{r}
+
+# add reclassified data
+to_train <- to_train %>%  
+  mutate(
+    exterior_condition_re = case_when(
+      exterior_condition %in% 1:3 ~ 1,
+      exterior_condition %in% 4:5 ~ 2,
+      exterior_condition %in% 6:7 ~ 3
+    )
+  ) %>%  
+  mutate(
+    fireplaces_re = case_when(
+      fireplaces %in% 0:1 ~ 1,
+      fireplaces == 2     ~ 2,
+      fireplaces %in% 3:5 ~ 3
+    )
+  ) %>%  
+  mutate(
+    interior_condition_re = case_when(
+      interior_condition %in% 0:2 ~ 1,
+      interior_condition %in% 3:4 ~ 2,
+      interior_condition %in% 5:7 ~ 3
+    )
+  ) %>%  
+  mutate(
+    number_of_bathrooms_re = case_when(
+      number_of_bathrooms ==0      ~ 1,
+      number_of_bathrooms %in% 1:2 ~ 2,
+      number_of_bathrooms %in% 3:6 ~ 3
+    )
+  ) %>%  
+  mutate(
+    number_of_bedrooms_re = case_when(
+      number_of_bedrooms %in% 0:1 ~ 1,
+      number_of_bedrooms %in% 2:3 ~ 2,
+      number_of_bedrooms %in% 4:31 ~ 3
+    )
+  )%>%  
+  mutate(
+    number_stories_re = case_when(
+      number_stories == 1     ~ 1,
+      number_stories == 2     ~ 2,
+      number_stories %in% 3:5 ~ 3
+    )
+  )
+
+philly_sub_200k <- st_drop_geometry(to_train) %>% 
+filter(sale_price <= 2000000, total_livable_area < 10000, total_livable_area > 0) 
+```
+
+## 3.3 Select Variables
+
+In order to prevent the selected features from having too strong correlations between them and affecting the regression results, we use a correlation matrix to provide us with pairwise correlations for each set of features in the data, and use Pearson's r - Correlation Coefficient to Look at the contribution of each variable. 
+
+### 3.3.1  Correlation matrix
+
+#### (1) Interial Characteristics
+
+The correlation matrix reveals that other than a few elements that exhibit a strong correlation with their reclassified counterparts, there is a notably robust positive correlation between `number_of_bathrooms` and `number_of_bedrooms`, while the remaining features show no significant correlations.
 
 ```{r correlation_matrix}
-numericVars <- 
-  select_if(st_drop_geometry(nhoods), is.numeric) %>% na.omit()
+
+internal.list <- to_train %>%
+  dplyr:: select(Age, total_livable_area, frontage, depth,
+                 geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
+                 number_of_bathrooms, number_of_bedrooms, number_stories,
+                 exterior_condition_re, fireplaces_re, number_of_bathrooms_re, number_of_bedrooms_re,number_stories_re ) %>%
+  st_drop_geometry()
+
+numericVars.internal <- 
+  select_if(internal.list, is.numeric) %>% 
+  na.omit()
 
 ggcorrplot(
-  round(cor(numericVars), 1), 
-  p.mat = cor_pmat(numericVars),
+  round(cor(numericVars.internal), 1), 
+  p.mat = cor_pmat(numericVars.internal),
   colors = c("#25CB10", "white", "#FA7800"),
+  lab_size = 1,
+  tl.cex = 8,
   type="lower",
   insig = "blank") +  
-    labs(title = "Correlation across numeric variables") 
-
-#有无穷或遗漏值？
-# yet another way to plot the correlation plot using the corrr library
-#numericVars %>% 
-#  correlate() %>% 
-#  autoplot() +
-#  geom_text(aes(label = round(r,digits=2)),size = 2)
+    labs(title = "Correlation across numeric variables\n(internal features)\n") +
+  plotTheme()
 
 ```
 
-# Univarite correlation -> multi-variate OLS regression
+```{r,results = FALSE,warning = FALSE, message = FALSE}
 
-### Pearson's r - Correlation Coefficient
+BED_Reg <- lm(sale_price ~ number_of_bedrooms, data = philly_sub_200k)
+summary(BED_Reg)
 
-Pearson's r Learning links:
-*   [Pearson Correlation Coefficient (r) | Guide & Examples](https://www.scribbr.com/statistics/pearson-correlation-coefficient/)
-*   [Correlation Test Between Two Variables in R](http://www.sthda.com/english/wiki/correlation-test-between-two-variables-in-r)
+BATH_Reg <- lm(sale_price ~ number_of_bathrooms, data = philly_sub_200k)
+summary(BATH_Reg)
 
-Note: the use of the `ggscatter()` function from the `ggpubr` package to plot the *Pearson's rho* or *Pearson's r* statistic; the Correlation Coefficient. This number can also be squared and represented as `r2`. However, this differs from the `R^2` or `R2` or "R-squared" of a linear model fit, known as the Coefficient of Determination. This is explained a bit more below.
+```
+
+#### (2) Exterial Characteristics
+
+In order to make the results more intuitive, we put the filtered features (`crime_nn5`,`p311_nn5`,`landmark.Buffer`,`school_nn5`,`college.Buffer`,`hospital_nn1`, `market_nn3`) that has a stronger correlation with sale_price into the plot.
+
+In the plot below, most of them do not have correlation, while `landmark.Buffer` and `market_nn3` have a positive correlation.
+
+```{r correlation_matrix2}
+external.list <- to_train %>%
+  dplyr:: select(crime_nn5,
+                 p311_nn5,
+                 landmark.Buffer,
+                 school_nn5,college.Buffer,
+                 hospital.Buffer, hospital_nn1, 
+                 park_nn2, market_nn3) %>%
+  st_drop_geometry() 
+numericVars.external <- 
+  select_if(external.list, is.numeric) %>% 
+  na.omit()
+
+ggcorrplot(
+  round(cor(numericVars.external ), 1), 
+  p.mat = cor_pmat(numericVars.external ),
+  colors = c("#25CB10", "white", "#FA7800"),
+  lab_size = 1,
+  tl.cex = 8,
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables\n(internal features)\n") +
+  plotTheme()
+
+```
+
+#### (3) Spatial Characteristics
+
+There exists a robust positive correlation between MedRent, MedHHIn, and pctWhite. Conversely, there is a notable negative correlation between pctPoverty and MedRent, MedHHInc, as well as pctWhite.
+
+```{r correlation_matrix3}
+
+numericVars.spatial <- 
+  select_if(census.list, is.numeric) %>% 
+  na.omit() %>%
+  st_drop_geometry() 
+
+ggcorrplot(
+  round(cor(numericVars.spatial ), 1), 
+  p.mat = cor_pmat(numericVars.spatial),
+  colors = c("#25CB10", "white", "#FA7800"),
+  lab_size = 1,
+  tl.cex = 8,
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables\n(census features)\n") +
+  plotTheme()
+
+```
+### 3.3.2 Univarite correlation with Pearson's r - Correlation Coefficient
+
+Then we use Pearson’s R to initially judge the correlation and degree of explanation between features and sale_price.
+
+As can be seen from the figure below, sale_price generally increases with the increase of total_livable_area, and there is a significant positive correlation (R-square = 0.33, p<2.2e-16).
 
 ```{r uni_variate_Regression}
-philly_sub_200k <- st_drop_geometry(nhoods) %>% 
-filter(sale_price <= 2000000) 
 
 cor.test(philly_sub_200k$total_livable_area,
          philly_sub_200k$sale_price, 
          method = "pearson")
 
-ggscatter(philly_sub_200k,
-          x = "total_livable_area",
-          y = "sale_price",
-          add = "reg.line") +
-  stat_cor(label.y = 2500000) 
-
 ```
-
-
-The Pearson's rho - Correlation Coefficient and the R2 Coefficient of Determination are **very** frequently confused! It is a really common mistake, so take a moment to understand what they are and how they differ. [This blog](https://towardsdatascience.com/r%C2%B2-or-r%C2%B2-when-to-use-what-4968eee68ed3) is a good explanation. In summary:
-
-*   The `r` is a measure the degree of relationship between two variables say x and y. It can go between -1 and 1.  1 indicates that the two variables are moving in unison.
-
-*   However, `R2` shows percentage variation in y which is explained by all the x variables together. Higher the better. It is always between 0 and 1. It can never be negative – since it is a squared value.
-
-## Univarite Regression
-
-### R2 - Coefficient of Determination
-
-Discussed above, the `R^2` or "R-squared" is a common way to validate the predictions of a linear model. Below we run a linear model on our data with the `lm()` function and get the output in our R terminal. At first this is an intimidating amount of information! Here is a [great resource](https://towardsdatascience.com/understanding-linear-regression-output-in-r-7a9cbda948b3) to understand how that output is organized and what it means.  
-
-What we are focusing on here is that `R-squared`,  `Adjusted R-squared` and the `Coefficients`.
-
-What's the `R2` good for as a diagnostic of model quality?
-
-Can somebody interpret the coefficient?
-
-Note: Here we use `ggscatter` with the `..rr.label` argument to show the `R2` Coefficient of Determination.
 
 ```{r simple_reg}
 livingReg <- lm(sale_price ~ total_livable_area, data = philly_sub_200k)
@@ -334,97 +958,132 @@ ggscatter(philly_sub_200k,
           add = "reg.line") +
   stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")), label.y = 2500000) +
   stat_regline_equation(label.y = 2250000) 
+
 ```
 
+# 4 Results
 
-## Prediction example
+## 4.1 Multivariate OLS Regression
 
-Make a prediction using the coefficient, intercept etc.,
+### 4.1.1 Table of results (training set)
 
-```{r calculate prediction}
-coefficients(livingReg)
+We performed regression analysis on internal features, external features and spatial features and sale_price. In Table 4.1 Summary Statistics of Model, we can see that these features can jointly explain 94% of sale_price (p<2.2e-16). Among them, the relationship between total_livable_area, garage_spaces, exterior_condition, landmark.Buffer, market_nn3, TotalPop, MedHHInc, pctBachelors and pctPovertyy and sale_price is very significant.
 
-new_total_livable_area = 4000
-
-# "by hand"
-378370.01571  + 88.34939 * new_total_livable_area
-
-# predict() function
-predict(livingReg, newdata = data.frame(total_livable_area = 4000))
-```
-
-
-## Multivariate Regression
-
-Let's take a look at this regression - how are we creating it?
-
-What's up with these categorical variables?
-
-Better R-squared - does that mean it's a better model?
-
-off_street_open, R_TOTAL_RM, NUM_FLOORS,
-                                               R_BDRMS, R_FULL_BTH, R_HALF_BTH, 
-                                               R_KITCH, R_AC, R_FPLACE
-
-```{r mutlivariate_regression}
+```{r mutlivariate_regression,warning = FALSE}
 reg1 <- lm(sale_price ~ ., data = philly_sub_200k %>% 
-                                 dplyr::select(sale_price, total_livable_area))
+                                 dplyr::select(sale_price, Age, total_livable_area, 
+                                               geographic_ward,garage_spaces,
+                                               fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                               number_of_bedrooms, number_stories,
+                                               crime_nn5,p311_nn5,landmark.Buffer,
+                                               school_nn5,college.Buffer,
+                                               hospital.Buffer, hospital_nn1, 
+                                               park_nn2, market_nn3,
+                                               TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty))
 
 summary(reg1)
+
+stargazer(reg1, type = "html", 
+          title = "Table 4.1 Summary Statistics of Model 1 ",
+          header = FALSE,
+          single.row = TRUE)
 ```
 
-## Marginal Response Plots
+### 4.1.2 Summary of Model Evaluation Parameters
 
-Let's try some of these out. They help you learn more about the relationships in the model.
+The following is Table Summary of Model Evaluation Parameters.
 
-What does a long line on either side of the blue circle suggest?
+```{r}
+broom::glance(reg1) %>%
+  kable(caption = 'Table Summary of Model Evaluation Parameters') %>%
+  kable_styling("striped", full_width = F)
 
-What does the location of the blue circle relative to the center line at zero suggest?
+```
+
+## 4.2 Marginal Response Plots
+
+We selected the feature with strong explanatory power for sale_price to explore its boundary influence. As you can see from the figure below, our model performs better when total_livable_area is in the 500-2000 range.
 
 ```{r effect_plots}
 ## Plot of marginal response
-effect_plot(reg1, pred = R_BDRMS, interval = TRUE, plot.points = TRUE)
+effect_plot(reg1, pred = total_livable_area, interval = TRUE, plot.points = TRUE)
 
 ## Plot coefficients
 plot_summs(reg1, scale = TRUE)
 
-## plot multiple model coeffs
-plot_summs(reg1, livingReg)
-
-
-```
-
-Challenges:
-
--What is the Coefficient of total_livable_area when Average Distance to 2-nearest crimes are considered?
-
--Build a regression with total_livable_area and crime_nn2? Report the regression coefficient for total_livable_area. Is it different than it was before? Why?
-
-- Try to engineer a 'fixed effect' out of the other variables in an attempt to parameterize a variable that suggests a big or fancy house or levels of fanciness. How does this affect your model?
-
-```{r}
-
-
 ```
 
 
+## 4.3 Table of Goodness of Fit
 
+Then we split Data into Train/Test Set.
 
-## Split Data into Train/Test Set
-```{r}
+```{r,results = FALSE,warning = FALSE, message = FALSE}
+to_train <- to_train %>%
+    mutate(landmark.Buffer = ifelse(is.na(landmark.Buffer), 0, landmark.Buffer))
+to_train <- to_train %>%
+    mutate(school.Buffer = ifelse(is.na(school.Buffer), 0, school.Buffer))
+to_train <- to_train %>%
+    mutate(college.Buffer = ifelse(is.na(college.Buffer), 0, college.Buffer))
+to_train <- to_train %>%
+    mutate(hospital.Buffer = ifelse(is.na(hospital.Buffer), 0, hospital.Buffer))
+to_train <- to_train %>%
+    mutate(park.Buffer = ifelse(is.na(park.Buffer), 0, park.Buffer))
+to_train <- to_train %>%
+    mutate(market.Buffer = ifelse(is.na(market.Buffer), 0, market.Buffer))
 
 inTrain <- createDataPartition(
-              y = paste(nhoods$building_code_description, nhoods$quality_grade), 
+              y = paste(to_train$building_code_description, to_train$quality_grade), 
               p = .60, list = FALSE)
-philly.training <- nhoods[inTrain,] 
-philly.test <- nhoods[-inTrain,]  
- 
+philly.training <- to_train[inTrain,] 
+philly.test <- to_train[-inTrain,] 
+
+philly.training <- philly.training%>%
+  dplyr::select(sale_price, Age, total_livable_area,
+               geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
+               number_of_bathrooms, number_of_bedrooms, number_stories,
+               toPredict, zip_code, geometry,
+               crimes.Buffer, crime_nn1, crime_nn2, crime_nn3, crime_nn4, crime_nn5,
+                 p311.Buffer, p311_nn1, p311_nn2, p311_nn3, p311_nn4, p311_nn5,
+                 landmark.Buffer, landmark_nn1, landmark_nn2, landmark_nn3, landmark_nn4, landmark_nn5,
+                 school.Buffer, school_nn1, school_nn2, school_nn3, school_nn4, school_nn5,
+                 college.Buffer, college_nn1, college_nn2, college_nn3, college_nn4, college_nn5,
+                 hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
+                 park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
+                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5, 
+                 DIST_NAME,building_code_description, quality_grade, musaID) 
+
+philly.test <- philly.test%>%
+  dplyr::select(sale_price, Age, total_livable_area,
+               geographic_ward,garage_spaces,fireplaces, interior_condition,exterior_condition, 
+               number_of_bathrooms, number_of_bedrooms, number_stories,
+               toPredict, zip_code, geometry,
+               crimes.Buffer, crime_nn1, crime_nn2, crime_nn3, crime_nn4, crime_nn5,
+                 p311.Buffer, p311_nn1, p311_nn2, p311_nn3, p311_nn4, p311_nn5,
+                 landmark.Buffer, landmark_nn1, landmark_nn2, landmark_nn3, landmark_nn4, landmark_nn5,
+                 school.Buffer, school_nn1, school_nn2, school_nn3, school_nn4, school_nn5,
+                 college.Buffer, college_nn1, college_nn2, college_nn3, college_nn4, college_nn5,
+                 hospital.Buffer, hospital_nn1, hospital_nn2, hospital_nn3, hospital_nn4, hospital_nn5,
+                 park.Buffer, park_nn1, park_nn2, park_nn3, park_nn4, park_nn5,
+                 market.Buffer, market_nn1, market_nn2, market_nn3, market_nn4, market_nn5, 
+                 DIST_NAME,building_code_description, quality_grade, musaID) 
+
 reg.training <- 
   lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
-                             dplyr::select(sale_price,crimes.Buffer,))
+                             dplyr::select(sale_price, total_livable_area, Age, 
+                                           geographic_ward,garage_spaces,
+                                           fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                           number_of_bedrooms, number_stories,
+                                           crime_nn5,p311_nn5,landmark.Buffer,
+                                           school_nn5,college.Buffer,
+                                           hospital.Buffer, hospital_nn1, 
+                                           park_nn2, market_nn3))
 
 philly.test <-
   philly.test %>%
+  na.omit() 
+
+philly.test <- philly.test %>%
   mutate(Regression = "Baseline Regression",
          sale_price.Predict = predict(reg.training, philly.test),
          sale_price.Error = sale_price.Predict - sale_price,
@@ -432,50 +1091,113 @@ philly.test <-
          sale_price.APE = (abs(sale_price.Predict - sale_price)) / sale_price.Predict)%>%
   filter(sale_price < 5000000) 
 
+philly.test %>% 
+  st_drop_geometry() %>%
+  summarise(MAE = mean(sale_price.AbsError),
+            MAPE = mean(abs(sale_price.APE)*100)) %>%
+  kbl(col.name=c('Mean Absolute Error','Mean Absolute Percentage Error')) %>%
+  kable_classic()
+
+```
+
+## 4.4 Cross Validation
+
+Spatial Lag of Price is obviously positively related to Sale price. Spatial Lag of Error is relatively gentle.
+
+```{r}
+fitControl <- trainControl(method = "cv", number = 100)
+set.seed(825)
+
+reg.cv <- 
+  train(sale_price ~ ., data = st_drop_geometry(to_train) %>% 
+          dplyr::select(sale_price, total_livable_area, Age, 
+                                           geographic_ward,garage_spaces,
+                                           fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                           number_of_bedrooms, number_stories,
+                                           crime_nn5,p311_nn5,landmark.Buffer,
+                                           school_nn5,college.Buffer,
+                                           hospital.Buffer, hospital_nn1, 
+                                           park_nn2, market_nn3,
+                                           DIST_NAME, TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty), 
+        method = "lm", trControl = fitControl, na.action = na.pass)
+
+ggplot(data = reg.cv$resample) +
+  geom_histogram(aes(x = reg.cv$resample$MAE), fill = 'orange') +
+  labs(title="Distribution of Cross-validation MAE",
+       subtitle = "K = 100\n",
+       caption = "Figure RESULT 4.2") +
+  xlab('MAE of Model 2') +
+  ylab('Count') +
+  plotTheme()
+
+```
+
+## 4.5 Spatial Lags
+
+```{r}
+
+# predict competition
+assign_test <- predict(reg.training , newdata=to_predict)
+to_predict$predict <- assign_test
+predicted_sub<-  to_predict %>%
+  dplyr::select(musaID,predict) %>%
+  mutate('team' = 'a team') %>%
+  st_drop_geometry()
+  
 ```
 
 ```{r}
+
 # Remove invalid predictions (Maybe need to do this before running the test)
 philly.test <-  philly.test[!with(philly.test,is.na(sale_price.Predict)),]
+
 ```
-## Spatial Lags
 
-What is the relationship between errors? Are they clustered? Is the error of a single observation correlated with the error of nearby observations?
-
-We create a list of "neigbhors" using a "spatial weights matrix".
+We create a list of "neigbhors" using a "spatial weights matrix". As the price rises, the spatial lag of price also rises, which means our model is not so suitable for predicting high house price.
 
 ```{r}
-coords <- st_coordinates(nhoods) 
+
+coords <- st_coordinates(philly.test) 
 
 neighborList <- knn2nb(knearneigh(coords, 5))
 
 spatialWeights <- nb2listw(neighborList, style="W")
 
-nhoods$lagPrice <- lag.listw(spatialWeights, nhoods$sale_price)
+philly.test$lagPrice <- lag.listw(spatialWeights, philly.test$sale_price)
 
 ```
 
-
 ```{r}
+
 coords.test <-  st_coordinates(philly.test) 
 
 neighborList.test <- knn2nb(knearneigh(coords.test, 5))
 
 spatialWeights.test <- nb2listw(neighborList.test, style="W")
- 
+
+ggplot() +
+  geom_point(data = philly.test, aes(x = lagPrice, y = sale_price), size = 2) +
+  geom_smooth(data = philly.test, aes(x = lagPrice, y = sale_price), method = "lm", se = F, colour = "#FA7800") +
+  labs(title = "Price as a function of the spatial lag of price",
+       x = "Spatial Lag of Price (Mean price of 5 nearest neighbors)",
+       y = "Sale Price")
+
 philly.test %>% 
   mutate(lagPriceError = lag.listw(spatialWeights.test, sale_price.Error)) %>%
   ggplot()+
-  geom_point(aes(x =lagPriceError, y =sale_price.Error))
+  geom_point(aes(x =lagPriceError, y =sale_price.Error)) +
+  geom_smooth(aes(x = lagPriceError, y = sale_price.Error),method = "lm", se=F, colour = "#FA7800") +
+  labs(title = "Error as a function of the spatial lag of price",
+       x = "Spatial Lag of Error (Mean error of 5 nearest neighbors)", y = "Sale Price") 
 
 ```
 
-## Do Errors Cluster? Using Moran's I
+## 4.5 Moran's I
 
-So - is your Moran's I statistic indicating dispersion (-1), randomness (0) or clustering (1)?
-
+Then we did Moran's I. From the figure below, Moran’s I deviates far from 0.0, indicating that there is an obvious spatial lag.
 
 ```{r}
+
 moranTest <- moran.mc(philly.test$sale_price.Error, 
                       spatialWeights.test, nsim = 999)
 
@@ -491,16 +1213,216 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 
 ```
 
-## Predictions by neighborhood
+## 4.6 Predictions by neighborhood
+
+Here's how our estimated average house prices compare to actual average house prices by region. The two are generally close, but there are still certain deviations.
 
 ```{r}
+
 philly.test %>%
 as.data.frame() %>%
 # Tract is not a good factor here
-  group_by(census_tract) %>%
+  group_by(DIST_NAME) %>%
     summarize(meanPrediction = mean(sale_price.Predict),
               meanPrice = mean(sale_price)) %>%
       kable() %>% 
   kable_styling()
 
 ```
+
+## 4.7 Regression with neighborhood effects
+
+
+Here, we engaged with neighborhood effects into our regression model to explain for the uneven distribution of sales price across different neighborhood and planning district in Philadelphia, providing a more nuanced understanding of house prices.
+
+```{r}
+
+philly.training <- st_join(philly.training, acsTractsPHL.2020)
+
+reg.nhood <- 
+  lm(sale_price ~ ., data = as.data.frame(philly.training) %>% 
+                             dplyr::select(sale_price, total_livable_area, Age, 
+                                           geographic_ward,garage_spaces,
+                                           fireplaces, interior_condition,exterior_condition, number_of_bathrooms, 
+                                           number_of_bedrooms, number_stories,
+                                           crime_nn5,p311_nn5,landmark.Buffer,
+                                           school_nn5,college.Buffer,
+                                           hospital.Buffer, hospital_nn1, 
+                                           park_nn2, market_nn3,
+                                           DIST_NAME, TotalPop, MedRent ,MedHHInc, pctWhite, pctVacant, pctBachelors, pctPoverty))
+
+philly.test <- st_join(philly.test, acsTractsPHL.2020)
+
+philly.test.nhood <-
+  philly.test %>%
+  mutate(Regression = "Neighborhood Effects",
+         sale_price.Predict = predict(reg.nhood, philly.test),
+         sale_price.Error = sale_price.Predict- sale_price,
+         sale_price.AbsError = abs(sale_price.Predict- sale_price),
+         sale_price.APE = (abs(sale_price.Predict- sale_price)) / sale_price)%>%
+  filter(sale_price < 5000000)
+
+```
+
+```{r}
+philly.test.nhood$sale_price.Error <- replace(philly.test.nhood$sale_price.Error, is.na(philly.test.nhood$sale_price.Error), 9999999)
+```
+
+```{r}
+bothRegressions <- 
+  rbind(
+    dplyr::select(philly.test, starts_with("sale_price"), Regression, DIST_NAME) %>%
+      mutate(lagPriceError = lag.listw(spatialWeights.test, sale_price.Error)),
+    dplyr::select(philly.test.nhood, starts_with("sale_price"), Regression, DIST_NAME) %>%
+      mutate(lagPriceError = lag.listw(spatialWeights.test, sale_price.Error)))  
+
+bothRegressions <- na.omit(bothRegressions)
+
+```
+
+
+```{r}
+
+st_drop_geometry(bothRegressions) %>%
+  gather(Variable, Value, -Regression, -DIST_NAME) %>%
+  filter(Variable == "sale_price.AbsError" | Variable == "sale_price.APE") %>%
+  group_by(Regression, Variable) %>%
+    summarize(meanValue = mean(Value, na.rm = T)) %>%
+    spread(Variable, meanValue) %>%
+    kable()
+
+```
+
+## 4.8 Predicted Map (Test Set)
+
+We visualize our model's predictions on the test set, offering a map overview of the estimated house sale prices across Philadelphia's neighborhoods.
+
+```{r}
+
+ ggplot()+
+   geom_sf(data= district,fill='grey80',color='transparent')+
+   geom_sf(data = philly.test, aes(colour = q5(sale_price.Predict)), 
+          show.legend = "point", size = .35) +
+   scale_colour_manual(values = palette5,
+                  labels=qBr(philly.test,"sale_price.Predict"),
+                   name="Quintile\nBreaks") +
+  labs(title="Predicted House Sale Price, Philadelphia") +
+  mapTheme()
+
+```
+
+## 4.9 plot of MAPE by neighborhood mean price
+
+the Mean Absolute Percentage Error (MAPE) could provides a standardized measure of the housing price's accuracy.
+
+```{r}
+
+st_drop_geometry(philly.test) %>%
+  group_by(Regression, DIST_NAME) %>%
+  summarize(mean.MAPE = mean(abs(sale_price.APE * 100), na.rm = T)) %>%
+  ungroup() %>% 
+  left_join(district) %>%
+    st_sf() %>%
+    ggplot() + 
+      geom_sf(aes(fill = mean.MAPE)) +
+      scale_fill_gradient(low = palette5[1], high = palette5[5],
+                          name = "Mean Absolute Percent Error") +
+      labs(title = "Mean test set MAPE by neighborhood") +
+      mapTheme()
+
+```
+
+
+## 4.10 Further examination of errors
+
+We did an additional examination on Predicted sale price as a function of observed price"
+
+```{r}
+
+bothRegressions %>%
+  dplyr::select(sale_price.Predict, sale_price, Regression) %>%
+    ggplot(aes(sale_price, sale_price.Predict)) +
+  geom_point() +
+  stat_smooth(aes(sale_price, sale_price.Predict), 
+             method = "lm", se = FALSE, size = 1, colour="#FA7800") + 
+  stat_smooth(aes(sale_price.Predict, sale_price), 
+              method = "lm", se = FALSE, size = 1, colour="#25CB10") +
+  labs(title="Predicted sale price as a function of observed price",
+       subtitle="Orange line represents a perfect prediction; Green line represents prediction") +
+  plotTheme()
+
+```
+
+
+We also examine the spatial pattern of errors. There is significant influence from the neighborhood dynamics.
+
+```{r}
+
+st_drop_geometry(bothRegressions) %>%
+  group_by(Regression, DIST_NAME) %>%
+  summarize(mean.MAPE = mean(sale_price.APE, na.rm = T)) %>%
+  ungroup() %>% 
+  left_join(district, by = c("DIST_NAME" = "DIST_NAME")) %>%
+    st_sf() %>%
+    ggplot() + 
+      geom_sf(aes(fill = mean.MAPE)) +
+      geom_sf(data = bothRegressions, colour = "black", size = .1) +
+      facet_wrap(~Regression) +
+      scale_fill_gradient(low = palette5[1], high = palette5[5],
+                          name = "MAPE") +
+      labs(title = "Mean test set MAPE by neighborhood") +
+      mapTheme()
+
+```
+
+## 4.11 Race and income context of predictions
+
+Analyzing the race and income contexts of the predictions helps in understanding the spatial distribution of the model's performance.
+
+```{r}
+tracts20 <- 
+  get_acs(geography = "tract", variables = c("B25026_001E","B02001_002E","B19013_001E"), 
+          year=2020, state=42, county=101, geometry=TRUE, output="wide") %>%
+  st_transform('ESRI:102729') %>% 
+  rename(TotalPop = B25026_001E,
+         NumberWhites =B02001_002E,
+         Median_Income = B19013_001E) %>%
+  mutate(percentWhite = NumberWhites / TotalPop,
+         raceContext = ifelse(percentWhite > .5, "Majority White", "Majority Non-White"),
+         incomeContext = ifelse(Median_Income > 32322, "High Income", "Low Income"))
+  
+grid.arrange(ncol = 2,
+  ggplot() + geom_sf(data = na.omit(tracts20), aes(fill = raceContext)) +
+    scale_fill_manual(values = c("#25CB10", "#FA7800"), name="Race Context") +
+    labs(title = "Race Context") +
+    mapTheme() + theme(legend.position="bottom"), 
+  ggplot() + geom_sf(data = na.omit(tracts20), aes(fill = incomeContext)) +
+    scale_fill_manual(values = c("#25CB10", "#FA7800"), name="Income Context") +
+    labs(title = "Income Context") +
+    mapTheme() + 
+    theme(legend.position="bottom"))
+
+```
+
+
+```{r}
+
+st_join(bothRegressions, tracts20) %>% 
+  group_by(Regression, raceContext) %>%
+  summarize(mean.MAPE = scales::percent(mean(sale_price.APE, na.rm = T))) %>%
+  st_drop_geometry() %>%
+  spread(raceContext, mean.MAPE) %>%
+  kable(caption = "Test set MAPE by neighborhood racial context")
+
+```
+
+# 5 Discussion
+
+-   Accuracy: The predictive model demonstrates remarkable effectiveness in forecasting sales prices in Philadelphia. It adeptly captured over 94% of the anticipated price variations, showcasing a substantial success. Notably, the Mean Absolute Error (MAE) from the test set remains below 100k, while the Mean Absolute Percentage Error (MAPE) does not exceed 50%. However, there remains ample room for enhancement, particularly in the incorporation of additional factors, such as transportation.
+
+-   Generalizability: With the inclusion of considerations like regional average income levels, poverty percentage, white population percentage, educational attainment, and other factors, our model exhibits enhanced adaptability and broad applicability. Nonetheless, it's important to acknowledge that this approach may inadvertently lead to regional disparities.
+
+# 6 Conclusion and recommendation
+
+We do not endorse the model due to its inclusion of racial bias, potentially leading to disadvantages for marginalized communities. Although it incorporates some intelligent features unique to Philadelphia not present in the prior model, resulting in improved accuracy, it is imperative to address the ethical implications of its application. To further diminish the error rate, it is advised to factor in additional amenities like local restaurants and bars (pending data availability), job opportunities, public events, public transportation, and spatial features such as zoning.
+
